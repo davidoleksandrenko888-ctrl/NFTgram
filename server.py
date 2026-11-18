@@ -17,11 +17,11 @@ def init_db():
                  nickname TEXT UNIQUE, phone TEXT, password TEXT,
                  stars INTEGER DEFAULT 5000, status TEXT DEFAULT 'user',
                  badge TEXT DEFAULT '', created_at TEXT, avatar TEXT DEFAULT '',
-                 role TEXT DEFAULT 'owner', is_banned INTEGER DEFAULT 0,
+                 role TEXT DEFAULT 'user', is_banned INTEGER DEFAULT 0,
                  username TEXT UNIQUE, custom_id TEXT UNIQUE, bio TEXT DEFAULT '')''')
     
     try:
-        c.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'owner'")
+        c.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
         c.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
         c.execute("ALTER TABLE users ADD COLUMN username TEXT")
         c.execute("ALTER TABLE users ADD COLUMN custom_id TEXT")
@@ -49,6 +49,7 @@ HTML_PAGE = """
             color: white; font-family: 'Inter', sans-serif; height: 100vh; overflow: hidden; display: flex; 
         }
 
+        /* СНЕГ */
         .snow { position: absolute; top: -10px; background: white; border-radius: 50%; opacity: 0.8; animation: fall linear infinite; pointer-events: none; z-index: 1; box-shadow: 0 0 10px rgba(255,255,255,0.5);}
         @keyframes fall { to { transform: translateY(100vh); } }
 
@@ -158,6 +159,26 @@ HTML_PAGE = """
         .role-moder { color: #4caf50; border: 1px solid #4caf50; background: rgba(76,175,80,0.1); }
         .role-helper { color: #00bcd4; border: 1px solid #00bcd4; background: rgba(0,188,212,0.1); }
         .role-scam { color: #9e9e9e; border: 1px solid #9e9e9e; text-decoration: line-through; }
+
+        /* АДМИНКА СНЕЖНАЯ */
+        .admin-section {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(100,181,246,0.2);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            position: relative;
+        }
+        .admin-section::before {
+            content: '❄️';
+            position: absolute;
+            top: -10px;
+            left: 20px;
+            background: #17212b;
+            padding: 0 5px;
+            font-size: 16px;
+        }
+        .admin-title { color: #90caf9; font-size: 16px; font-weight: 700; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;}
     </style>
 </head>
 <body>
@@ -201,7 +222,7 @@ HTML_PAGE = """
     <div class="sidebar">
         <div class="profile-mini">
             <div class="avatar" id="userAvatar">👤</div>
-            <div class="user-name" id="sideName">Ник <span id="sideRoleBadge" class="role-badge"></span></div>
+            <div class="user-name" id="sideName">Ник</div>
             <div class="user-id-text" id="sideId">ID: 0</div>
             <div class="user-phone" id="sideUser">@username</div>
             <div class="user-stats" style="margin-top: 10px; font-size: 13px; color: #8b9eb0; display: flex; justify-content: center; gap: 10px;">
@@ -302,45 +323,44 @@ HTML_PAGE = """
             </div>
         </div>
 
-        <!-- НАСТРОЙКИ -->
+        <!-- НАСТРОЙКИ И АДМИНКА -->
         <div id="tab-settings" class="content-section">
             <h2>⚙️ Настройки</h2>
             
-            <div class="card-box" id="adminPasswordForm" style="display: none;">
+            <div class="card-box" id="adminPasswordForm">
                 <h3 style="margin-bottom: 15px;">Панель управления</h3>
-                <p style="color: #8b9eb0; margin-bottom: 10px; font-size: 14px;">Введите пароль администратора.</p>
+                <p style="color: #8b9eb0; margin-bottom: 10px; font-size: 14px;">Введите пароль администратора для доступа к скрытым функциям.</p>
                 <div class="input-group"><input type="password" id="adminPassInput" placeholder="Пароль"></div>
                 <button onclick="checkAdminPass()">Активировать</button>
             </div>
 
-            <div class="card-box" id="adminPanel" style="border-color: #e53935; background: rgba(50, 20, 20, 0.5); display: none;">
-                <h3 style="color: #e53935; margin-bottom: 15px;">Админ-панель</h3>
-                
-                <div class="input-group">
-                    <input type="text" id="adminTarget" placeholder="ID пользователя (10 цифр)">
+            <div id="adminPanel" style="display: none;">
+                <div class="admin-section">
+                    <div class="admin-title">❄️ Выдать звезды</div>
+                    <div class="input-group"><input type="text" id="adminTargetStars" placeholder="ID пользователя"></div>
+                    <div class="input-group"><input type="number" id="adminValueStars" placeholder="Кол-во звезд"></div>
+                    <button class="btn-success" onclick="adminAction('stars')">Выдать</button>
                 </div>
 
-                <div class="input-group" style="margin-top: 20px;">
-                    <h4 style="margin-bottom: 10px; color: #ff9800;">Выдать звезды:</h4>
-                    <input type="number" id="adminStars" placeholder="Кол-во звезд" style="margin-bottom: 10px;">
-                    <button class="btn-success" onclick="adminAction('stars')">Выдать звезды</button>
-                </div>
-
-                <div class="input-group" style="margin-top: 20px;">
-                    <h4 style="margin-bottom: 10px; color: #00bcd4;">Сменить роль:</h4>
-                    <select id="adminRole" style="margin-bottom: 10px;">
-                        <option value="owner">Овнер (owner)</option>
-                        <option value="admin">Админ (admin)</option>
-                        <option value="moder">Модер (moder)</option>
-                        <option value="helper">Хелпер (helper)</option>
-                        <option value="scam">Скам (scam)</option>
-                        <option value="user">Юзер (сбросить)</option>
-                    </select>
+                <div class="admin-section">
+                    <div class="admin-title">❄️ Сменить роль</div>
+                    <div class="input-group"><input type="text" id="adminTargetRole" placeholder="ID пользователя"></div>
+                    <div class="input-group">
+                        <select id="adminValueRole">
+                            <option value="owner">Овнер 👑</option>
+                            <option value="admin">Админ 🛡️</option>
+                            <option value="moder">Модер ⚔️</option>
+                            <option value="helper">Хелпер 💠</option>
+                            <option value="scam">Скам 🚫</option>
+                            <option value="user">Юзер 👤 (Сброс)</option>
+                        </select>
+                    </div>
                     <button onclick="adminAction('role')">Сменить роль</button>
                 </div>
 
-                <div class="input-group" style="margin-top: 20px;">
-                    <h4 style="margin-bottom: 10px; color: #e53935;">Бан / Разбан:</h4>
+                <div class="admin-section">
+                    <div class="admin-title">❄️ Бан / Разбан</div>
+                    <div class="input-group"><input type="text" id="adminTargetBan" placeholder="ID пользователя"></div>
                     <div class="admin-btn-group">
                         <button class="btn-danger" onclick="adminAction('ban', 1)">Забанить</button>
                         <button class="btn-success" onclick="adminAction('ban', 0)">Разбанить</button>
@@ -349,14 +369,13 @@ HTML_PAGE = """
             </div>
             
             <div class="card-box" style="text-align: center; color: #8b9eb0; margin-top: 50px;">
-                <p>Версия NFTgram Winter Edition 1.5</p>
+                <p>Версия NFTgram Winter Edition 1.6</p>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // СНЕГ
     const snowContainer = document.getElementById('snow-container');
     for (let i = 0; i < 70; i++) {
         let snow = document.createElement('div');
@@ -404,7 +423,6 @@ HTML_PAGE = """
         }
     }
 
-    // АВТОРИЗАЦИЯ И СЕССИЯ
     window.onload = function() {
         const savedUser = localStorage.getItem('nftgram_user');
         if (savedUser) {
@@ -430,8 +448,8 @@ HTML_PAGE = """
         });
         
         if (res.ok) { 
-            showToast("Успешно выдано! Вам начислено 5000 звезд и статус Овнера 👑", "success"); 
-            setTimeout(() => showForm('login'), 2000);
+            showToast("Регистрация успешна!", "success"); 
+            setTimeout(() => showForm('login'), 1500);
         } 
         else { showToast("Ошибка: Ник занят", "error"); }
     }
@@ -449,7 +467,7 @@ HTML_PAGE = """
             if(data.error) return showToast(data.error, "error");
             
             currentUser = data;
-            localStorage.setItem('nftgram_user', JSON.stringify(currentUser)); // Сохраняем сессию
+            localStorage.setItem('nftgram_user', JSON.stringify(currentUser));
             document.getElementById('authScreen').style.display = 'none';
             document.getElementById('appScreen').style.display = 'flex';
             updateUI();
@@ -458,8 +476,7 @@ HTML_PAGE = """
     }
 
     function updateUI() {
-        // Роли теперь видны всегда, если это твой аккаунт
-        document.getElementById('sideName').innerHTML = `${currentUser.nickname} <span id="sideRoleBadge" class="role-badge"></span>`;
+        document.getElementById('sideName').innerHTML = `${currentUser.nickname}`;
         document.getElementById('sideId').innerText = `ID: ${currentUser.custom_id}`;
         document.getElementById('sideUser').innerText = currentUser.username;
         document.getElementById('sideStars').innerText = currentUser.stars;
@@ -468,7 +485,7 @@ HTML_PAGE = """
         const diffTime = Math.abs(new Date() - created);
         document.getElementById('sideDays').innerText = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
 
-        document.getElementById('profNick').innerHTML = `${currentUser.nickname} <span id="profRoleBadge" class="role-badge"></span>`;
+        document.getElementById('profNick').innerHTML = `${currentUser.nickname}`;
         document.getElementById('profUser').innerText = currentUser.username;
         document.getElementById('profId').innerText = `Ваш ID: ${currentUser.custom_id}`;
         document.getElementById('profBio').innerText = currentUser.bio || 'Био пока нет...';
@@ -479,18 +496,8 @@ HTML_PAGE = """
         document.getElementById('userAvatar').innerHTML = avatarImg;
         document.getElementById('profileBigAvatar').innerHTML = avatarImg;
 
-        updateRoleBadges();
-        
-        // Включаем админку автоматически для Овнера
-        if (currentUser.role === 'owner' || currentUser.role === 'admin') {
-            document.getElementById('adminPanel').style.display = 'block';
-            document.getElementById('adminPasswordForm').style.display = 'none';
-        }
-    }
-
-    function updateRoleBadges() {
-        document.querySelectorAll('.role-badge').forEach(b => { b.className = 'role-badge'; b.innerText = ''; });
-        
+        // Проверка на админа для отображения тегов
+        const isAdmin = (currentUser.role === 'owner' || currentUser.role === 'admin' || currentUser.role === 'moder' || currentUser.role === 'helper');
         const roleMap = {
             "owner": { text: "OWNER", class: "role-owner" },
             "admin": { text: "ADMIN", class: "role-admin" },
@@ -501,10 +508,8 @@ HTML_PAGE = """
 
         if (roleMap[currentUser.role]) {
             const r = roleMap[currentUser.role];
-            const sideBadge = document.getElementById('sideRoleBadge');
-            const profBadge = document.getElementById('profRoleBadge');
-            if(sideBadge) { sideBadge.innerText = `[${r.text}]`; sideBadge.classList.add(r.class); }
-            if(profBadge) { profBadge.innerText = `[${r.text}]`; profBadge.classList.add(r.class); }
+            document.getElementById('sideName').innerHTML = `${currentUser.nickname} <span class="role-badge ${r.class}">[${r.text}]</span>`;
+            document.getElementById('profNick').innerHTML = `${currentUser.nickname} <span class="role-badge ${r.class}">[${r.text}]</span>`;
         }
     }
 
@@ -552,7 +557,7 @@ HTML_PAGE = """
         if (res.ok) {
             const data = await res.json();
             currentUser.avatar = data.avatar_url;
-            localStorage.setItem('nftgram_user', JSON.stringify(currentUser)); // Обновляем сессию
+            localStorage.setItem('nftgram_user', JSON.stringify(currentUser));
             updateUI();
             showToast("Аватар обновлен!", "success");
         } else { showToast("Ошибка загрузки. Фото слишком большое.", "error"); }
@@ -603,19 +608,26 @@ HTML_PAGE = """
     }
 
     async function adminAction(action, forceValue = null) {
-        const target = document.getElementById('adminTarget').value;
-        if(!target) return showToast("Введите ID пользователя!", "error");
-
+        let targetId = '';
         let value = forceValue;
-        if (action === 'stars') value = document.getElementById('adminStars').value;
-        if (action === 'role') value = document.getElementById('adminRole').value;
 
+        if (action === 'stars') {
+            targetId = document.getElementById('adminTargetStars').value;
+            value = document.getElementById('adminValueStars').value;
+        } else if (action === 'role') {
+            targetId = document.getElementById('adminTargetRole').value;
+            value = document.getElementById('adminRole').value;
+        } else if (action === 'ban') {
+            targetId = document.getElementById('adminTargetBan').value;
+        }
+
+        if(!targetId) return showToast("Введите ID пользователя!", "error");
         if (value === null || value === '') return showToast("Заполните значение!", "error");
 
         const res = await fetch('/api/admin_action', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({admin_pass: "Spyke", target_id: target, action: action, value: value})
+            body: JSON.stringify({admin_pass: "Spyke", target_id: targetId, action: action, value: value})
         });
         
         if (res.ok) { showToast("Действие выполнено!", "success"); } 
@@ -640,14 +652,14 @@ def register_user(data: dict):
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
     
-    # Генерация рандомного номера
     random_phone = f"+7{random.randint(9000000000, 9999999999)}"
-    random_username = f"@crown" # Сразу выдается тег @crown
+    random_username = f"@user{random.randint(1000, 9999)}"
     random_id = ''.join([str(random.randint(0, 9)) for _ in range(10)])
     
     try:
+        # Обычный юзер, 1000 звезд по умолчанию
         c.execute("INSERT INTO users (nickname, phone, password, username, custom_id, stars, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                  (data.get("nickname"), random_phone, data.get("password"), random_username, random_id, 5000, "owner", datetime.now().strftime("%Y-%m-%d")))
+                  (data.get("nickname"), random_phone, data.get("password"), random_username, random_id, 1000, "user", datetime.now().strftime("%Y-%m-%d")))
         conn.commit()
         return {"status": "ok"}
     except sqlite3.IntegrityError:
