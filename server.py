@@ -18,19 +18,22 @@ def init_db():
                  stars INTEGER DEFAULT 1000, status TEXT DEFAULT 'user',
                  badge TEXT DEFAULT '', created_at TEXT, avatar TEXT DEFAULT '',
                  role TEXT DEFAULT 'user', is_banned INTEGER DEFAULT 0,
-                 username TEXT UNIQUE)''')
+                 username TEXT UNIQUE, custom_id TEXT UNIQUE, bio TEXT DEFAULT '')''')
     
     try:
         c.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
         c.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
         c.execute("ALTER TABLE users ADD COLUMN username TEXT")
+        c.execute("ALTER TABLE users ADD COLUMN custom_id TEXT")
+        c.execute("ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''")
     except sqlite3.OperationalError:
         pass
     
     c.execute("SELECT * FROM users WHERE nickname = 'Admin'")
     if not c.fetchone():
-        c.execute("INSERT INTO users (nickname, phone, password, status, created_at, role, username) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                  ("Admin", "+80000000000", "Spyke", "admin", datetime.now().strftime("%Y-%m-%d"), "owner", "admin_core"))
+        admin_id = ''.join([str(random.randint(0, 9)) for _ in range(10)])
+        c.execute("INSERT INTO users (nickname, phone, password, status, created_at, role, username, custom_id, bio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  ("Admin", "+80000000000", "Spyke", "admin", datetime.now().strftime("%Y-%m-%d"), "owner", "@admin_core", admin_id, "Создатель NFTgram"))
     
     conn.commit()
     conn.close()
@@ -52,11 +55,9 @@ HTML_PAGE = """
             color: white; font-family: 'Inter', sans-serif; height: 100vh; overflow: hidden; display: flex; 
         }
 
-        /* СНЕГ */
         .snow { position: absolute; top: -10px; background: white; border-radius: 50%; opacity: 0.8; animation: fall linear infinite; pointer-events: none; z-index: 1; box-shadow: 0 0 10px rgba(255,255,255,0.5);}
         @keyframes fall { to { transform: translateY(100vh); } }
 
-        /* УВЕДОМЛЕНИЯ */
         #toast-container { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; display: flex; flex-direction: column; gap: 15px; align-items: center; pointer-events: none; }
         .toast { 
             background: rgba(23, 33, 43, 0.95); backdrop-filter: blur(15px); color: white; 
@@ -77,11 +78,12 @@ HTML_PAGE = """
         }
         h1 { color: #90caf9; margin-bottom: 20px; font-size: 28px; font-weight: 800; text-shadow: 0 0 15px rgba(100,181,246,0.5); }
         .input-group { position: relative; width: 100%; margin: 10px 0; }
-        input { 
+        input, textarea { 
             width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); 
             background: rgba(36, 47, 61, 0.7); color: white; font-family: 'Inter', sans-serif; outline: none; font-size: 14px; transition: 0.3s; 
         }
-        input:focus { border-color: #90caf9; background: rgba(36, 47, 61, 0.9); box-shadow: 0 0 10px rgba(144,202,249,0.3); }
+        input:focus, textarea:focus { border-color: #90caf9; background: rgba(36, 47, 61, 0.9); box-shadow: 0 0 10px rgba(144,202,249,0.3); }
+        textarea { resize: vertical; min-height: 80px; }
         .eye-btn { position: absolute; right: 15px; top: 14px; cursor: pointer; color: #8b9eb0; font-size: 18px; user-select: none; }
         button { 
             background: linear-gradient(135deg, #64b5f6, #42a5f5); color: #0e1621; border: none; padding: 14px; 
@@ -151,7 +153,6 @@ HTML_PAGE = """
         }
         .avatar-label:hover { background: #64b5f6; box-shadow: 0 0 15px rgba(100,181,246,0.5); }
 
-        /* ЦВЕТА РОЛЕЙ */
         .role-badge { font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 6px; letter-spacing: 0.5px; display: none; }
         .role-owner { color: #e53935; border: 1px solid #e53935; background: rgba(229,57,53,0.1); }
         .role-admin { color: #ff9800; border: 1px solid #ff9800; background: rgba(255,152,0,0.1); }
@@ -184,7 +185,6 @@ HTML_PAGE = """
 
         <div id="registerForm" class="hidden">
             <div class="input-group"><input type="text" id="regNick" placeholder="Имя (Nickname)"></div>
-            <div class="input-group"><input type="text" id="regUser" placeholder="Юзернейм (@, англ, 5-12 симв.)"></div>
             <div class="input-group">
                 <input type="password" id="regPass" placeholder="Пароль">
                 <span class="eye-btn" onclick="togglePass('regPass', this)">👁️</span>
@@ -193,11 +193,9 @@ HTML_PAGE = """
                 <input type="password" id="regPass2" placeholder="Повторите пароль">
                 <span class="eye-btn" onclick="togglePass('regPass2', this)">👁️</span>
             </div>
-            
             <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <input type="text" id="regPhone" placeholder="+380..." style="width: 100%;">
+                <input type="text" id="regPhone" placeholder="+380...">
             </div>
-            
             <button onclick="register()">Зарегистрироваться</button>
             <span class="link" onclick="showForm('login')">Уже есть аккаунт? Войти</span>
         </div>
@@ -257,8 +255,9 @@ HTML_PAGE = """
                 <div class="avatar" style="width: 120px; height: 120px; margin: 0; font-size: 50px;" id="profileBigAvatar">👤</div>
                 <div>
                     <h3 style="margin-bottom: 5px; display: flex; align-items: center; gap: 8px;" id="profNick"></h3>
-                    <p style="color: #90caf9; font-weight: 600; margin-bottom: 5px;" id="profUser"></p>
-                    <p style="color: #8b9eb0; font-size: 13px; margin-bottom: 15px;" id="profId"></p>
+                    <p style="color: #90caf9; font-weight: 600; margin-bottom: 2px;" id="profUser"></p>
+                    <p style="color: #8b9eb0; font-size: 13px; margin-bottom: 10px;" id="profId"></p>
+                    <p style="color: #b0bec5; font-size: 14px; font-style: italic; margin-bottom: 15px;" id="profBio"></p>
                     <input type="file" id="avatarUpload" class="avatar-upload" accept="image/*" onchange="uploadAvatar()">
                     <label for="avatarUpload" class="avatar-label">Сменить аватар</label>
                 </div>
@@ -273,6 +272,8 @@ HTML_PAGE = """
             <div class="card-box">
                 <h3 style="margin-bottom: 15px;">Изменить данные</h3>
                 <div class="input-group"><input type="text" id="newName" placeholder="Новое Имя"></div>
+                <div class="input-group"><input type="text" id="newUsername" placeholder="Новый Юзернейм (@, англ)"></div>
+                <div class="input-group"><textarea id="newBio" placeholder="О себе (Био)"></textarea></div>
                 <div class="input-group"><input type="password" id="newPass" placeholder="Новый Пароль"></div>
                 <button onclick="updateProfile()">Сохранить изменения</button>
             </div>
@@ -318,7 +319,7 @@ HTML_PAGE = """
                 <button onclick="checkAdminPass()">Активировать</button>
             </div>
 
-            <div class="card-box" id="adminPanel" style="border-color: #e53935; background: rgba(50, 20, 20, 0.5);">
+            <div class="card-box" id="adminPanel" style="border-color: #e53935; background: rgba(50, 20, 20, 0.5); display: none;">
                 <h3 style="color: #e53935; margin-bottom: 15px;">Админ-панель</h3>
                 
                 <div class="input-group"><input type="number" id="adminTarget" placeholder="ID пользователя (до 10 цифр)"></div>
@@ -337,14 +338,13 @@ HTML_PAGE = """
             </div>
             
             <div class="card-box" style="text-align: center; color: #8b9eb0; margin-top: 50px;">
-                <p>Версия NFTgram Winter Edition 1.2</p>
+                <p>Версия NFTgram Winter Edition 1.3</p>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-    // СНЕГ
     const snowContainer = document.getElementById('snow-container');
     for (let i = 0; i < 70; i++) {
         let snow = document.createElement('div');
@@ -361,14 +361,12 @@ HTML_PAGE = """
     let currentUser = null;
     let rolesVisible = false;
 
-    // ЦЕНТРАЛЬНОЕ УВЕДОМЛЕНИЕ
     function showToast(message, type = 'success') {
         const container = document.getElementById('toast-container');
         const toast = document.createElement('div');
         toast.className = `toast ${type}`;
         toast.innerHTML = `<span>${type === 'success' ? '✅' : '❌'}</span> ${message}`;
         container.appendChild(toast);
-        
         setTimeout(() => {
             toast.style.opacity = '0';
             toast.style.transform = 'scale(0.8) translateY(20px)';
@@ -397,27 +395,25 @@ HTML_PAGE = """
 
     async function register() {
         const nick = document.getElementById('regNick').value;
-        const username = document.getElementById('regUser').value;
         const pass = document.getElementById('regPass').value;
         const pass2 = document.getElementById('regPass2').value;
         const phone = document.getElementById('regPhone').value;
         
-        if (!nick || !username || !pass || !phone) return showToast("Заполните все поля!", "error");
-        if (username.length < 5 || username.length > 12) return showToast("Юзернейм должен быть от 5 до 12 символов!", "error");
-        if (!/^[a-zA-Z0-9_]+$/.test(username)) return showToast("Юзернейм только на английском!", "error");
+        if (!nick || !pass || !phone) return showToast("Заполните все поля!", "error");
         if (pass !== pass2) return showToast("Пароли не совпадают!", "error");
         
+        // Юзернейм и ID генерируются на бэкенде
         const res = await fetch('/api/register', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({nickname: nick, username: "@"+username, password: pass, phone: phone})
+            body: JSON.stringify({nickname: nick, password: pass, phone: phone})
         });
         
         if (res.ok) { 
             showToast("Аккаунт создан!", "success"); 
             setTimeout(() => showForm('login'), 1500);
         } 
-        else { showToast("Ошибка: Ник или юзернейм занят", "error"); }
+        else { showToast("Ошибка: Ник занят", "error"); }
     }
 
     async function login() {
@@ -441,7 +437,7 @@ HTML_PAGE = """
 
     function updateUI() {
         document.getElementById('sideName').innerHTML = `${currentUser.nickname} <span id="sideRoleBadge" class="role-badge"></span>`;
-        document.getElementById('sideId').innerText = `ID: ${currentUser.id}`;
+        document.getElementById('sideId').innerText = `ID: ${currentUser.custom_id}`;
         document.getElementById('sideUser').innerText = currentUser.username;
         document.getElementById('sideStars').innerText = currentUser.stars;
         
@@ -451,7 +447,8 @@ HTML_PAGE = """
 
         document.getElementById('profNick').innerHTML = `${currentUser.nickname} <span id="profRoleBadge" class="role-badge"></span>`;
         document.getElementById('profUser').innerText = currentUser.username;
-        document.getElementById('profId').innerText = `Ваш ID: ${currentUser.id}`;
+        document.getElementById('profId').innerText = `Ваш ID: ${currentUser.custom_id}`;
+        document.getElementById('profBio').innerText = currentUser.bio || 'Био пока нет...';
         document.getElementById('profDate').innerText = currentUser.created_at;
         document.getElementById('profStars').innerText = currentUser.stars;
 
@@ -459,18 +456,12 @@ HTML_PAGE = """
         document.getElementById('userAvatar').innerHTML = avatarImg;
         document.getElementById('profileBigAvatar').innerHTML = avatarImg;
 
-        // Обновляем бейджи ролей
         updateRoleBadges();
     }
 
     function updateRoleBadges() {
-        const badges = document.querySelectorAll('.role-badge');
-        badges.forEach(b => {
-            b.className = 'role-badge';
-            b.innerText = '';
-        });
-
-        if (!rolesVisible) return; // Если роли скрыты, ничего не показываем
+        document.querySelectorAll('.role-badge').forEach(b => { b.className = 'role-badge'; b.innerText = ''; });
+        if (!rolesVisible) return;
 
         const roleMap = {
             "owner": { text: "OWNER", class: "role-owner" },
@@ -494,7 +485,6 @@ HTML_PAGE = """
         document.querySelectorAll('.content-section').forEach(el => el.classList.remove('active'));
         if(element) element.classList.add('active');
         document.getElementById('tab-' + tabId).classList.add('active');
-
         if(tabId === 'tops') loadTops();
     }
 
@@ -509,21 +499,12 @@ HTML_PAGE = """
                 let medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🏅';
                 let avatarImg = u.avatar ? `<img src="${u.avatar}" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:10px; border: 2px solid #64b5f6;">` : `<div style="font-size:40px; margin-bottom:10px;">👤</div>`;
                 
-                // Роли в топах видны только если админка активна
-                let roleHtml = '';
-                if (rolesVisible && u.role !== 'user') {
-                    const roleMap = {"owner": "OWNER", "admin": "ADMIN", "moder": "MODER", "helper": "HELPER", "scam": "SCAM"};
-                    roleHtml = `<p style="font-size: 11px; font-weight: 800; color: #e53935; margin-bottom: 5px;">[${roleMap[u.role] || u.role}]</p>`;
-                }
-
                 container.innerHTML += `
                     <div class="case-item" style="border-color: ${index === 0 ? '#fbc02d' : 'rgba(255,255,255,0.05)'};">
                         <div class="case-img">${medal}</div>
                         ${avatarImg}
                         <h3 style="display: flex; justify-content: center; align-items: center; gap: 5px;">${u.nickname}</h3>
-                        <p style="color: #8b9eb0; font-size: 12px; margin-bottom: 5px;">${u.username || ''}</p>
-                        ${roleHtml}
-                        <p style="color: #fbc02d; font-weight:700; font-size: 15px;">${u.stars} ⭐</p>
+                        <p style="color: #fbc02d; font-weight:700; font-size: 15px; margin-top: 5px;">${u.stars} ⭐</p>
                     </div>
                 `;
             });
@@ -550,25 +531,37 @@ HTML_PAGE = """
 
     async function updateProfile() {
         const newName = document.getElementById('newName').value;
+        const newUser = document.getElementById('newUsername').value;
+        const newBio = document.getElementById('newBio').value;
         const newPass = document.getElementById('newPass').value;
         
+        if (newUser && !/^[a-zA-Z0-9_]+$/.test(newUser)) return showToast("Юзернейм только на английском!", "error");
+
         const res = await fetch('/api/update_profile', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({nickname: currentUser.nickname, new_name: newName, new_pass: newPass})
+            body: JSON.stringify({
+                nickname: currentUser.nickname, 
+                new_name: newName, 
+                new_username: newUser ? "@" + newUser : null, 
+                new_bio: newBio, 
+                new_pass: newPass
+            })
         });
         
         if (res.ok) {
             if (newName) currentUser.nickname = newName;
+            if (newUser) currentUser.username = "@" + newUser;
+            if (newBio) currentUser.bio = newBio;
             if (newPass) currentUser.password = newPass;
             updateUI();
             showToast("Данные изменены!", "success");
         } else { showToast("Ошибка изменения", "error"); }
     }
 
-    // АДМИНКА
     function checkAdminPass() {
         const pass = document.getElementById('adminPassInput').value;
+        // Вводим пароль в верхнее поле!
         if (pass === 'Spyke' || currentUser.role === 'owner' || currentUser.role === 'admin') {
             document.getElementById('adminPasswordForm').style.display = 'none';
             document.getElementById('adminPanel').style.display = 'block';
@@ -609,13 +602,18 @@ async def read_index():
 def register_user(data: dict):
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
+    
+    # Генерация юзернейма и ID
+    random_username = f"@user{random.randint(1000, 9999)}"
+    random_id = ''.join([str(random.randint(0, 9)) for _ in range(10)])
+    
     try:
-        c.execute("INSERT INTO users (nickname, phone, password, username, created_at) VALUES (?, ?, ?, ?, ?)",
-                  (data.get("nickname"), data.get("phone"), data.get("password"), data.get("username"), datetime.now().strftime("%Y-%m-%d")))
+        c.execute("INSERT INTO users (nickname, phone, password, username, custom_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                  (data.get("nickname"), data.get("phone"), data.get("password"), random_username, random_id, datetime.now().strftime("%Y-%m-%d")))
         conn.commit()
         return {"status": "ok"}
     except sqlite3.IntegrityError:
-        raise HTTPException(status_code=400, detail="Ник или юзернейм занят")
+        raise HTTPException(status_code=400, detail="Ник занят")
     finally:
         conn.close()
 
@@ -630,7 +628,8 @@ def login_user(data: dict):
         if user[10] == 1: return {"error": "Вы забанены в NFTgram!"}
         
         return {"id": user[0], "nickname": user[1], "phone": user[2], "password": user[3], "stars": user[4], 
-                "status": user[5], "created_at": user[7], "avatar": user[8], "role": user[9], "username": user[11]}
+                "status": user[5], "created_at": user[7], "avatar": user[8], "role": user[9], 
+                "username": user[11], "custom_id": user[12], "bio": user[13]}
     raise HTTPException(status_code=401, detail="Неверный Ник или Пароль")
 
 @app.post("/api/upload_avatar")
@@ -651,6 +650,8 @@ def update_profile(data: dict):
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
     if data.get("new_name"): c.execute("UPDATE users SET nickname = ? WHERE nickname = ?", (data.get("new_name"), data.get("nickname")))
+    if data.get("new_username"): c.execute("UPDATE users SET username = ? WHERE nickname = ?", (data.get("new_username"), data.get("nickname")))
+    if data.get("new_bio") is not None: c.execute("UPDATE users SET bio = ? WHERE nickname = ?", (data.get("new_bio"), data.get("nickname")))
     if data.get("new_pass"): c.execute("UPDATE users SET password = ? WHERE nickname = ?", (data.get("new_pass"), data.get("nickname")))
     conn.commit()
     conn.close()
@@ -660,10 +661,10 @@ def update_profile(data: dict):
 def get_tops():
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
-    c.execute("SELECT nickname, stars, avatar, role, username FROM users ORDER BY stars DESC LIMIT 10")
+    c.execute("SELECT nickname, stars, avatar FROM users ORDER BY stars DESC LIMIT 10")
     users = c.fetchall()
     conn.close()
-    return [{"nickname": u[0], "stars": u[1], "avatar": u[2], "role": u[3], "username": u[4]} for u in users]
+    return [{"nickname": u[0], "stars": u[1], "avatar": u[2]} for u in users]
 
 @app.post("/api/admin_action")
 def admin_action(data: dict):
@@ -673,11 +674,11 @@ def admin_action(data: dict):
     
     target_id = data.get("target_id")
     if data.get("action") == "stars": 
-        c.execute("UPDATE users SET stars = ? WHERE id = ?", (int(data.get("value")), target_id))
+        c.execute("UPDATE users SET stars = ? WHERE custom_id = ?", (int(data.get("value")), target_id))
     elif data.get("action") == "role": 
-        c.execute("UPDATE users SET role = ? WHERE id = ?", (data.get("value"), target_id))
+        c.execute("UPDATE users SET role = ? WHERE custom_id = ?", (data.get("value"), target_id))
     elif data.get("action") == "ban": 
-        c.execute("UPDATE users SET is_banned = ? WHERE id = ?", (int(data.get("value")), target_id))
+        c.execute("UPDATE users SET is_banned = ? WHERE custom_id = ?", (int(data.get("value")), target_id))
     
     conn.commit()
     conn.close()
