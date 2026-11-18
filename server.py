@@ -15,7 +15,7 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS users
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                  nickname TEXT UNIQUE, phone TEXT, password TEXT,
-                 stars INTEGER DEFAULT 5000, status TEXT DEFAULT 'user',
+                 stars INTEGER DEFAULT 1000, status TEXT DEFAULT 'user',
                  badge TEXT DEFAULT '', created_at TEXT, avatar TEXT DEFAULT '',
                  role TEXT DEFAULT 'user', is_banned INTEGER DEFAULT 0,
                  username TEXT UNIQUE, custom_id TEXT UNIQUE, bio TEXT DEFAULT '')''')
@@ -28,6 +28,12 @@ def init_db():
         c.execute("ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''")
     except sqlite3.OperationalError:
         pass
+    
+    # Добавляем системного бота, чтобы топы не были пустыми
+    c.execute("SELECT * FROM users WHERE nickname = 'Admin'")
+    if not c.fetchone():
+        c.execute("INSERT INTO users (nickname, phone, password, username, custom_id, stars, role, created_at, bio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                  ("Admin", "+79999999999", "spyke", "@admin_bot", "0000000000", 999999, "owner", datetime.now().strftime("%Y-%m-%d"), "Системный аккаунт"))
     
     conn.commit()
     conn.close()
@@ -49,7 +55,6 @@ HTML_PAGE = """
             color: white; font-family: 'Inter', sans-serif; height: 100vh; overflow: hidden; display: flex; 
         }
 
-        /* СНЕГ */
         .snow { position: absolute; top: -10px; background: white; border-radius: 50%; opacity: 0.8; animation: fall linear infinite; pointer-events: none; z-index: 1; box-shadow: 0 0 10px rgba(255,255,255,0.5);}
         @keyframes fall { to { transform: translateY(100vh); } }
 
@@ -226,7 +231,7 @@ HTML_PAGE = """
             <div class="user-id-text" id="sideId">ID: 0</div>
             <div class="user-phone" id="sideUser">@username</div>
             <div class="user-stats" style="margin-top: 10px; font-size: 13px; color: #8b9eb0; display: flex; justify-content: center; gap: 10px;">
-                <span>⭐ <span id="sideStars">5000</span></span>
+                <span>⭐ <span id="sideStars">1000</span></span>
                 <span>❄️ <span id="sideDays">0</span> дн.</span>
             </div>
         </div>
@@ -287,7 +292,7 @@ HTML_PAGE = """
             <div class="card-box">
                 <h3 style="margin-bottom: 15px;">Изменить данные</h3>
                 <div class="input-group"><input type="text" id="newName" placeholder="Новое Имя"></div>
-                <div class="input-group"><input type="text" id="newUsername" placeholder="Новый Юзернейм (@, англ)"></div>
+                <div class="input-group"><input type="text" id="newUsername" placeholder="Новый Юзернейм (без @, англ)"></div>
                 <div class="input-group"><textarea id="newBio" placeholder="О себе (Био)"></textarea></div>
                 <div class="input-group"><input type="password" id="newPass" placeholder="Новый Пароль"></div>
                 <button onclick="updateProfile()">Сохранить изменения</button>
@@ -496,8 +501,6 @@ HTML_PAGE = """
         document.getElementById('userAvatar').innerHTML = avatarImg;
         document.getElementById('profileBigAvatar').innerHTML = avatarImg;
 
-        // Проверка на админа для отображения тегов
-        const isAdmin = (currentUser.role === 'owner' || currentUser.role === 'admin' || currentUser.role === 'moder' || currentUser.role === 'helper');
         const roleMap = {
             "owner": { text: "OWNER", class: "role-owner" },
             "admin": { text: "ADMIN", class: "role-admin" },
@@ -616,7 +619,7 @@ HTML_PAGE = """
             value = document.getElementById('adminValueStars').value;
         } else if (action === 'role') {
             targetId = document.getElementById('adminTargetRole').value;
-            value = document.getElementById('adminRole').value;
+            value = document.getElementById('adminValueRole').value;
         } else if (action === 'ban') {
             targetId = document.getElementById('adminTargetBan').value;
         }
@@ -657,7 +660,6 @@ def register_user(data: dict):
     random_id = ''.join([str(random.randint(0, 9)) for _ in range(10)])
     
     try:
-        # Обычный юзер, 1000 звезд по умолчанию
         c.execute("INSERT INTO users (nickname, phone, password, username, custom_id, stars, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                   (data.get("nickname"), random_phone, data.get("password"), random_username, random_id, 1000, "user", datetime.now().strftime("%Y-%m-%d")))
         conn.commit()
