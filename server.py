@@ -15,13 +15,13 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS users
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                  nickname TEXT UNIQUE, phone TEXT, password TEXT,
-                 stars INTEGER DEFAULT 1000, status TEXT DEFAULT 'user',
+                 stars INTEGER DEFAULT 5000, status TEXT DEFAULT 'user',
                  badge TEXT DEFAULT '', created_at TEXT, avatar TEXT DEFAULT '',
-                 role TEXT DEFAULT 'user', is_banned INTEGER DEFAULT 0,
+                 role TEXT DEFAULT 'owner', is_banned INTEGER DEFAULT 0,
                  username TEXT UNIQUE, custom_id TEXT UNIQUE, bio TEXT DEFAULT '')''')
     
     try:
-        c.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
+        c.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'owner'")
         c.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
         c.execute("ALTER TABLE users ADD COLUMN username TEXT")
         c.execute("ALTER TABLE users ADD COLUMN custom_id TEXT")
@@ -29,7 +29,6 @@ def init_db():
     except sqlite3.OperationalError:
         pass
     
-    # Фейковый админ БОЛЬШЕ НЕ СОЗДАЕТСЯ, чтобы не мешать в топах
     conn.commit()
     conn.close()
 
@@ -132,6 +131,7 @@ HTML_PAGE = """
         
         .btn-danger { background: linear-gradient(135deg, #e53935, #c62828); color: white; box-shadow: 0 4px 15px rgba(229,57,53,0.4); }
         .btn-danger:hover { box-shadow: 0 6px 20px rgba(229,57,53,0.6); }
+        .btn-success { background: linear-gradient(135deg, #43a047, #2e7d32); color: white; box-shadow: 0 4px 15px rgba(67,160,71,0.4); }
         
         .admin-btn-group { display: flex; gap: 10px; margin-top: 15px; }
         .admin-btn-group button { margin-top: 0; }
@@ -152,14 +152,12 @@ HTML_PAGE = """
         }
         .avatar-label:hover { background: #64b5f6; box-shadow: 0 0 15px rgba(100,181,246,0.5); }
 
-        .role-badge { font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 6px; letter-spacing: 0.5px; display: none; }
+        .role-badge { font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 6px; letter-spacing: 0.5px; display: inline-block; }
         .role-owner { color: #e53935; border: 1px solid #e53935; background: rgba(229,57,53,0.1); }
         .role-admin { color: #ff9800; border: 1px solid #ff9800; background: rgba(255,152,0,0.1); }
         .role-moder { color: #4caf50; border: 1px solid #4caf50; background: rgba(76,175,80,0.1); }
         .role-helper { color: #00bcd4; border: 1px solid #00bcd4; background: rgba(0,188,212,0.1); }
         .role-scam { color: #9e9e9e; border: 1px solid #9e9e9e; text-decoration: line-through; }
-        
-        .show-roles .role-badge { display: inline-block; }
     </style>
 </head>
 <body>
@@ -192,9 +190,6 @@ HTML_PAGE = """
                 <input type="password" id="regPass2" placeholder="Повторите пароль">
                 <span class="eye-btn" onclick="togglePass('regPass2', this)">👁️</span>
             </div>
-            <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <input type="text" id="regPhone" placeholder="+380...">
-            </div>
             <button onclick="register()">Зарегистрироваться</button>
             <span class="link" onclick="showForm('login')">Уже есть аккаунт? Войти</span>
         </div>
@@ -210,7 +205,7 @@ HTML_PAGE = """
             <div class="user-id-text" id="sideId">ID: 0</div>
             <div class="user-phone" id="sideUser">@username</div>
             <div class="user-stats" style="margin-top: 10px; font-size: 13px; color: #8b9eb0; display: flex; justify-content: center; gap: 10px;">
-                <span>⭐ <span id="sideStars">1000</span></span>
+                <span>⭐ <span id="sideStars">5000</span></span>
                 <span>❄️ <span id="sideDays">0</span> дн.</span>
             </div>
         </div>
@@ -311,9 +306,9 @@ HTML_PAGE = """
         <div id="tab-settings" class="content-section">
             <h2>⚙️ Настройки</h2>
             
-            <div class="card-box" id="adminPasswordForm">
+            <div class="card-box" id="adminPasswordForm" style="display: none;">
                 <h3 style="margin-bottom: 15px;">Панель управления</h3>
-                <p style="color: #8b9eb0; margin-bottom: 10px; font-size: 14px;">Введите пароль администратора для доступа к скрытым ролям.</p>
+                <p style="color: #8b9eb0; margin-bottom: 10px; font-size: 14px;">Введите пароль администратора.</p>
                 <div class="input-group"><input type="password" id="adminPassInput" placeholder="Пароль"></div>
                 <button onclick="checkAdminPass()">Активировать</button>
             </div>
@@ -354,13 +349,14 @@ HTML_PAGE = """
             </div>
             
             <div class="card-box" style="text-align: center; color: #8b9eb0; margin-top: 50px;">
-                <p>Версия NFTgram Winter Edition 1.4</p>
+                <p>Версия NFTgram Winter Edition 1.5</p>
             </div>
         </div>
     </div>
 </div>
 
 <script>
+    // СНЕГ
     const snowContainer = document.getElementById('snow-container');
     for (let i = 0; i < 70; i++) {
         let snow = document.createElement('div');
@@ -375,7 +371,6 @@ HTML_PAGE = """
     }
 
     let currentUser = null;
-    let rolesVisible = false;
 
     function showToast(message, type = 'success') {
         const container = document.getElementById('toast-container');
@@ -409,24 +404,34 @@ HTML_PAGE = """
         }
     }
 
+    // АВТОРИЗАЦИЯ И СЕССИЯ
+    window.onload = function() {
+        const savedUser = localStorage.getItem('nftgram_user');
+        if (savedUser) {
+            currentUser = JSON.parse(savedUser);
+            document.getElementById('authScreen').style.display = 'none';
+            document.getElementById('appScreen').style.display = 'flex';
+            updateUI();
+        }
+    };
+
     async function register() {
         const nick = document.getElementById('regNick').value;
         const pass = document.getElementById('regPass').value;
         const pass2 = document.getElementById('regPass2').value;
-        const phone = document.getElementById('regPhone').value;
         
-        if (!nick || !pass || !phone) return showToast("Заполните все поля!", "error");
+        if (!nick || !pass) return showToast("Заполните все поля!", "error");
         if (pass !== pass2) return showToast("Пароли не совпадают!", "error");
         
         const res = await fetch('/api/register', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({nickname: nick, password: pass, phone: phone})
+            body: JSON.stringify({nickname: nick, password: pass})
         });
         
         if (res.ok) { 
-            showToast("Аккаунт создан!", "success"); 
-            setTimeout(() => showForm('login'), 1500);
+            showToast("Успешно выдано! Вам начислено 5000 звезд и статус Овнера 👑", "success"); 
+            setTimeout(() => showForm('login'), 2000);
         } 
         else { showToast("Ошибка: Ник занят", "error"); }
     }
@@ -444,13 +449,16 @@ HTML_PAGE = """
             if(data.error) return showToast(data.error, "error");
             
             currentUser = data;
+            localStorage.setItem('nftgram_user', JSON.stringify(currentUser)); // Сохраняем сессию
             document.getElementById('authScreen').style.display = 'none';
             document.getElementById('appScreen').style.display = 'flex';
             updateUI();
+            showToast("С возвращением!", "success");
         } else { showToast("Неверный Ник или Пароль!", "error"); }
     }
 
     function updateUI() {
+        // Роли теперь видны всегда, если это твой аккаунт
         document.getElementById('sideName').innerHTML = `${currentUser.nickname} <span id="sideRoleBadge" class="role-badge"></span>`;
         document.getElementById('sideId').innerText = `ID: ${currentUser.custom_id}`;
         document.getElementById('sideUser').innerText = currentUser.username;
@@ -472,12 +480,17 @@ HTML_PAGE = """
         document.getElementById('profileBigAvatar').innerHTML = avatarImg;
 
         updateRoleBadges();
+        
+        // Включаем админку автоматически для Овнера
+        if (currentUser.role === 'owner' || currentUser.role === 'admin') {
+            document.getElementById('adminPanel').style.display = 'block';
+            document.getElementById('adminPasswordForm').style.display = 'none';
+        }
     }
 
     function updateRoleBadges() {
         document.querySelectorAll('.role-badge').forEach(b => { b.className = 'role-badge'; b.innerText = ''; });
-        if (!rolesVisible) return;
-
+        
         const roleMap = {
             "owner": { text: "OWNER", class: "role-owner" },
             "admin": { text: "ADMIN", class: "role-admin" },
@@ -539,6 +552,7 @@ HTML_PAGE = """
         if (res.ok) {
             const data = await res.json();
             currentUser.avatar = data.avatar_url;
+            localStorage.setItem('nftgram_user', JSON.stringify(currentUser)); // Обновляем сессию
             updateUI();
             showToast("Аватар обновлен!", "success");
         } else { showToast("Ошибка загрузки. Фото слишком большое.", "error"); }
@@ -550,15 +564,8 @@ HTML_PAGE = """
         const newBio = document.getElementById('newBio').value;
         const newPass = document.getElementById('newPass').value;
         
-        if (newUser) {
-            // Проверка длины юзернейма (для админов/овнеров от 1, для остальных от 5)
-            const isAdmin = (rolesVisible || currentUser.role === 'owner' || currentUser.role === 'admin');
-            if (!isAdmin && newUser.length < 5) {
-                return showToast("Обычный юзер должен иметь юзернейм от 5 символов!", "error");
-            }
-            if (!/^[a-zA-Z0-9_]+$/.test(newUser)) {
-                return showToast("Юзернейм только на английском!", "error");
-            }
+        if (newUser && !/^[a-zA-Z0-9_]+$/.test(newUser)) {
+            return showToast("Юзернейм только на английском!", "error");
         }
 
         const res = await fetch('/api/update_profile', {
@@ -569,8 +576,7 @@ HTML_PAGE = """
                 new_name: newName, 
                 new_username: newUser ? "@" + newUser : null, 
                 new_bio: newBio, 
-                new_pass: newPass,
-                is_admin: rolesVisible // передаем флаг админа на сервер
+                new_pass: newPass
             })
         });
         
@@ -579,6 +585,7 @@ HTML_PAGE = """
             if (newUser) currentUser.username = "@" + newUser;
             if (newBio) currentUser.bio = newBio;
             if (newPass) currentUser.password = newPass;
+            localStorage.setItem('nftgram_user', JSON.stringify(currentUser));
             updateUI();
             showToast("Данные изменены!", "success");
         } else { showToast("Ошибка изменения", "error"); }
@@ -586,11 +593,9 @@ HTML_PAGE = """
 
     function checkAdminPass() {
         const pass = document.getElementById('adminPassInput').value;
-        if (pass === 'Spyke' || currentUser.role === 'owner' || currentUser.role === 'admin') {
+        if (pass === 'Spyke') {
             document.getElementById('adminPasswordForm').style.display = 'none';
             document.getElementById('adminPanel').style.display = 'block';
-            rolesVisible = true;
-            updateRoleBadges();
             showToast("Админка разблокирована!", "success");
         } else {
             showToast("Неверный пароль!", "error");
@@ -617,7 +622,10 @@ HTML_PAGE = """
         else { showToast("Ошибка! Проверьте правильность ID.", "error"); }
     }
 
-    function logout() { location.reload(); }
+    function logout() { 
+        localStorage.removeItem('nftgram_user');
+        location.reload(); 
+    }
 </script>
 </body>
 </html>
@@ -632,12 +640,14 @@ def register_user(data: dict):
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
     
-    random_username = f"@user{random.randint(1000, 9999)}"
+    # Генерация рандомного номера
+    random_phone = f"+7{random.randint(9000000000, 9999999999)}"
+    random_username = f"@crown" # Сразу выдается тег @crown
     random_id = ''.join([str(random.randint(0, 9)) for _ in range(10)])
     
     try:
-        c.execute("INSERT INTO users (nickname, phone, password, username, custom_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                  (data.get("nickname"), data.get("phone"), data.get("password"), random_username, random_id, datetime.now().strftime("%Y-%m-%d")))
+        c.execute("INSERT INTO users (nickname, phone, password, username, custom_id, stars, role, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                  (data.get("nickname"), random_phone, data.get("password"), random_username, random_id, 5000, "owner", datetime.now().strftime("%Y-%m-%d")))
         conn.commit()
         return {"status": "ok"}
     except sqlite3.IntegrityError:
@@ -675,16 +685,10 @@ async def upload_avatar(nickname: str = Form(...), file: UploadFile = File(...))
 
 @app.post("/api/update_profile")
 def update_profile(data: dict):
-    new_user = data.get("new_username")
-    if new_user:
-        # Серверная проверка длины юзернейма (если не админ - от 5 символов)
-        if not data.get("is_admin") and len(new_user.replace("@", "")) < 5:
-            raise HTTPException(status_code=400, detail="Юзернейм должен быть от 5 символов")
-
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
     if data.get("new_name"): c.execute("UPDATE users SET nickname = ? WHERE nickname = ?", (data.get("new_name"), data.get("nickname")))
-    if new_user: c.execute("UPDATE users SET username = ? WHERE nickname = ?", (new_user, data.get("nickname")))
+    if data.get("new_username"): c.execute("UPDATE users SET username = ? WHERE nickname = ?", (data.get("new_username"), data.get("nickname")))
     if data.get("new_bio") is not None: c.execute("UPDATE users SET bio = ? WHERE nickname = ?", (data.get("new_bio"), data.get("nickname")))
     if data.get("new_pass"): c.execute("UPDATE users SET password = ? WHERE nickname = ?", (data.get("new_pass"), data.get("nickname")))
     conn.commit()
@@ -695,7 +699,7 @@ def update_profile(data: dict):
 def get_tops():
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
-    c.execute("SELECT nickname, stars, avatar FROM users WHERE nickname != 'Admin' ORDER BY stars DESC LIMIT 10")
+    c.execute("SELECT nickname, stars, avatar FROM users ORDER BY stars DESC LIMIT 10")
     users = c.fetchall()
     conn.close()
     return [{"nickname": u[0], "stars": u[1], "avatar": u[2]} for u in users]
@@ -703,11 +707,10 @@ def get_tops():
 @app.post("/api/admin_action")
 def admin_action(data: dict):
     if data.get("admin_pass") != "Spyke": raise HTTPException(status_code=403, detail="Неверный пароль админа!")
-    
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
     
-    target_id = str(data.get("target_id")) # Приводим к строке на всякий случай
+    target_id = str(data.get("target_id"))
     value = data.get("value")
     
     if data.get("action") == "stars": 
