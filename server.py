@@ -1,15 +1,14 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.responses import HTMLResponse
 import sqlite3
 import os
-import shutil
+import base64
 from datetime import datetime
 
 app = FastAPI()
 
 # --- БАЗА ДАННЫХ ---
 def init_db():
-    # ❗ Я убрал os.remove('nftgram.db'), чтобы твоя база не удалялась при каждом запуске!
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users
@@ -18,7 +17,6 @@ def init_db():
                  stars INTEGER DEFAULT 1000, status TEXT DEFAULT 'user',
                  badge TEXT DEFAULT '', created_at TEXT, avatar TEXT DEFAULT '')''')
     
-    # Проверяем, есть ли уже админ, чтобы не создавать его дубликаты
     c.execute("SELECT * FROM users WHERE nickname = 'Admin'")
     if not c.fetchone():
         c.execute("INSERT INTO users (nickname, phone, password, status, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -29,72 +27,110 @@ def init_db():
 
 init_db()
 
-if not os.path.exists("avatars"):
-    os.makedirs("avatars")
-
 HTML_PAGE = """
 <!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>NFTgram</title>
+    <title>NFTgram ❄️</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background-color: #0e1621; color: white; font-family: 'Inter', sans-serif; height: 100vh; overflow: hidden; display: flex; }
+        body { 
+            background: linear-gradient(135deg, #0a111a 0%, #14212b 50%, #1a2a3a 100%); 
+            color: white; font-family: 'Inter', sans-serif; height: 100vh; overflow: hidden; display: flex; 
+        }
 
-        .snow { position: absolute; top: -10px; background: white; border-radius: 50%; opacity: 0.6; animation: fall linear infinite; pointer-events: none; z-index: 1;}
+        /* СНЕГ */
+        .snow { position: absolute; top: -10px; background: white; border-radius: 50%; opacity: 0.8; animation: fall linear infinite; pointer-events: none; z-index: 1; box-shadow: 0 0 10px rgba(255,255,255,0.5);}
         @keyframes fall { to { transform: translateY(100vh); } }
 
+        /* АВТОРИЗАЦИЯ */
         .auth-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; display: flex; justify-content: center; align-items: center; width: 100%; }
-        .card { background-color: #17212b; padding: 40px; border-radius: 20px; width: 380px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); text-align: center; position: relative; }
-        h1 { color: #64b5f6; margin-bottom: 20px; font-size: 28px; font-weight: 700; }
+        .card { 
+            background: rgba(23, 33, 43, 0.8); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            padding: 40px; border-radius: 24px; width: 380px; box-shadow: 0 25px 50px rgba(0,0,0,0.8); 
+            text-align: center; position: relative; border: 1px solid rgba(255,255,255,0.1); 
+        }
+        h1 { color: #90caf9; margin-bottom: 20px; font-size: 28px; font-weight: 700; text-shadow: 0 0 15px rgba(100,181,246,0.5); }
         .input-group { position: relative; width: 100%; margin: 10px 0; }
-        input { width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid #242f3d; background-color: #242f3d; color: white; font-family: 'Inter', sans-serif; outline: none; font-size: 14px; transition: 0.2s; }
-        input:focus { border-color: #64b5f6; background: #1a2533; }
+        input, select { 
+            width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); 
+            background: rgba(36, 47, 61, 0.7); color: white; font-family: 'Inter', sans-serif; outline: none; font-size: 14px; transition: 0.3s; 
+        }
+        input:focus { border-color: #90caf9; background: rgba(36, 47, 61, 0.9); box-shadow: 0 0 10px rgba(144,202,249,0.3); }
         .eye-btn { position: absolute; right: 15px; top: 14px; cursor: pointer; color: #8b9eb0; font-size: 18px; user-select: none; }
-        button { background-color: #64b5f6; color: #0e1621; border: none; padding: 14px; border-radius: 12px; font-weight: 600; cursor: pointer; width: 100%; margin-top: 15px; font-family: 'Inter', sans-serif; transition: 0.2s; font-size: 15px; }
-        button:hover { background-color: #42a5f5; transform: translateY(-1px); }
-        .link { color: #64b5f6; font-size: 14px; cursor: pointer; margin-top: 15px; display: block; text-decoration: none; font-weight: 500; }
+        button { 
+            background: linear-gradient(135deg, #64b5f6, #42a5f5); color: #0e1621; border: none; padding: 14px; 
+            border-radius: 12px; font-weight: 700; cursor: pointer; width: 100%; margin-top: 15px; 
+            font-family: 'Inter', sans-serif; transition: 0.3s; font-size: 15px; box-shadow: 0 4px 15px rgba(100,181,246,0.4);
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(100,181,246,0.6); }
+        .link { color: #90caf9; font-size: 14px; cursor: pointer; margin-top: 15px; display: block; text-decoration: none; font-weight: 500; }
         .link:hover { text-decoration: underline; }
         .hidden { display: none !important; }
 
-        #appScreen { display: none; width: 100%; height: 100%; background: #0e1621; z-index: 20; }
+        /* ГЛАВНОЕ ОКНО */
+        #appScreen { display: none; width: 100%; height: 100%; z-index: 20; }
         
-        .sidebar { width: 280px; background: #17212b; height: 100%; padding: 20px; border-right: 1px solid #242f3d; display: flex; flex-direction: column; }
-        .profile-mini { text-align: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #242f3d; }
+        .sidebar { 
+            width: 280px; background: rgba(23, 33, 43, 0.7); backdrop-filter: blur(10px); 
+            height: 100%; padding: 20px; border-right: 1px solid rgba(255,255,255,0.05); 
+            display: flex; flex-direction: column; overflow-y: auto;
+        }
+        .profile-mini { text-align: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
         
-        .avatar { width: 80px; height: 80px; background: #242f3d; border-radius: 50%; margin: 0 auto 15px; display: flex; justify-content: center; align-items: center; font-size: 32px; color: #64b5f6; overflow: hidden; background-size: cover; background-position: center; }
+        .avatar { 
+            width: 90px; height: 90px; background: rgba(36, 47, 61, 0.8); border-radius: 50%; margin: 0 auto 15px; 
+            display: flex; justify-content: center; align-items: center; font-size: 40px; color: #64b5f6; 
+            overflow: hidden; background-size: cover; background-position: center; border: 2px solid #64b5f6;
+            box-shadow: 0 0 20px rgba(100,181,246,0.5);
+        }
         
-        .user-name { font-size: 20px; font-weight: 600; margin-bottom: 5px; }
-        .user-phone { color: #64b5f6; font-size: 14px; }
-        .badge { background: #e53935; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-left: 5px; }
+        .user-name { font-size: 20px; font-weight: 700; margin-bottom: 5px; }
+        .user-phone { color: #90caf9; font-size: 14px; }
+        .badge { background: #e53935; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; margin-left: 5px; }
         .user-stats { display: flex; justify-content: center; gap: 15px; margin-top: 15px; font-size: 13px; color: #8b9eb0; }
         .user-stats span { display: flex; align-items: center; gap: 5px; }
 
-        .menu-item { padding: 14px 16px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 500; color: #8b9eb0; transition: 0.2s; margin-bottom: 5px; }
-        .menu-item:hover, .menu-item.active { background: #242f3d; color: #64b5f6; }
+        .menu-item { 
+            padding: 14px 16px; border-radius: 12px; cursor: pointer; display: flex; align-items: center; 
+            gap: 12px; font-weight: 500; color: #8b9eb0; transition: 0.3s; margin-bottom: 5px; 
+        }
+        .menu-item:hover, .menu-item.active { background: rgba(100,181,246,0.15); color: #90caf9; }
 
         .content { flex: 1; padding: 40px; overflow-y: auto; position: relative; }
-        .content-section { display: none; animation: fadeIn 0.3s; }
+        .content-section { display: none; animation: fadeIn 0.4s ease-out; }
         .content-section.active { display: block; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-        h2 { font-size: 28px; margin-bottom: 20px; }
-        .card-box { background: #17212b; border-radius: 15px; padding: 25px; margin-bottom: 20px; border: 1px solid #242f3d; }
+        h2 { font-size: 28px; margin-bottom: 20px; font-weight: 700; }
+        .card-box { 
+            background: rgba(23, 33, 43, 0.7); backdrop-filter: blur(10px); 
+            border-radius: 20px; padding: 30px; margin-bottom: 20px; 
+            border: 1px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
         
-        .admin-input { margin-bottom: 10px; }
-        .btn-danger { background: #e53935; color: white; }
-        .btn-danger:hover { background: #c62828; }
+        .btn-danger { background: linear-gradient(135deg, #e53935, #c62828); color: white; box-shadow: 0 4px 15px rgba(229,57,53,0.4); }
+        .btn-danger:hover { box-shadow: 0 6px 20px rgba(229,57,53,0.6); }
 
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
-        .case-item { background: #17212b; border-radius: 15px; padding: 20px; text-align: center; border: 1px solid #242f3d; transition: 0.2s; cursor: pointer; }
-        .case-item:hover { border-color: #64b5f6; transform: translateY(-5px); }
-        .case-img { font-size: 40px; margin-bottom: 10px; }
+        /* СЕТКА ТОПОВ */
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
+        .case-item { 
+            background: rgba(23, 33, 43, 0.7); border-radius: 20px; padding: 25px; 
+            text-align: center; border: 1px solid rgba(255,255,255,0.05); transition: 0.3s; 
+            cursor: pointer; position: relative; overflow: hidden;
+        }
+        .case-item:hover { border-color: #64b5f6; transform: translateY(-5px); box-shadow: 0 10px 25px rgba(100,181,246,0.2); }
+        .case-img { font-size: 50px; margin-bottom: 15px; filter: drop-shadow(0 0 10px rgba(255,255,255,0.3)); }
         
         .avatar-upload { display: none; }
-        .avatar-label { cursor: pointer; color: #64b5f6; text-decoration: underline; font-size: 13px; }
+        .avatar-label { 
+            cursor: pointer; color: #0e1621; background: #90caf9; padding: 10px 20px; 
+            border-radius: 10px; font-size: 14px; font-weight: 600; display: inline-block; transition: 0.3s;
+        }
+        .avatar-label:hover { background: #64b5f6; box-shadow: 0 0 15px rgba(100,181,246,0.5); }
     </style>
 </head>
 <body>
@@ -103,7 +139,7 @@ HTML_PAGE = """
 <!-- ЭКРАН ВХОДА -->
 <div class="auth-container" id="authScreen">
     <div class="card">
-        <h1>NFTgram</h1>
+        <h1>❄️ NFTgram</h1>
         <p style="color: #8b9eb0; margin-bottom: 20px; font-size: 14px;" id="authSub">Войдите в свой аккаунт</p>
         
         <div id="loginForm">
@@ -128,12 +164,12 @@ HTML_PAGE = """
             </div>
             
             <div style="display: flex; gap: 10px; margin-top: 10px;">
-                <select id="countryCode" style="width: 35%; padding: 14px; border-radius: 12px; background: #242f3d; color: white; border: none; font-family: 'Inter';">
+                <select id="countryCode">
                     <option value="+8">🇷🇺 +8</option>
                     <option value="+380">🇺🇦 +380</option>
                     <option value="+1">🇺🇸 +1</option>
                 </select>
-                <input type="text" id="regPhone" placeholder="Номер (нажмите)" readonly onclick="generatePhone()" style="width: 65%; cursor: pointer; color: #8b9eb0;">
+                <input type="text" id="regPhone" placeholder="Номер (нажмите)" readonly onclick="generatePhone()" style="cursor: pointer; color: #8b9eb0;">
             </div>
             
             <button onclick="register()">Зарегистрироваться</button>
@@ -155,7 +191,7 @@ HTML_PAGE = """
             </div>
             <div class="user-stats">
                 <span>⭐ <span id="sideStars">1000</span></span>
-                <span>📅 <span id="sideDays">0</span> дн.</span>
+                <span>❄️ <span id="sideDays">0</span> дн.</span>
             </div>
         </div>
 
@@ -176,7 +212,6 @@ HTML_PAGE = """
             Аукцион
         </div>
         <div class="menu-item" onclick="switchTab('nft', this)">
-            <!-- Золотая иконка -->
             <svg width="20" height="20" viewBox="0 0 24 24" fill="#FFD700"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
             NFT
         </div>
@@ -194,34 +229,44 @@ HTML_PAGE = """
         <!-- ПРОФИЛЬ -->
         <div id="tab-profile" class="content-section active">
             <h2>Мой профиль</h2>
+            
+            <div class="card-box" style="display: flex; align-items: center; gap: 30px;">
+                <div class="avatar" style="width: 120px; height: 120px; margin: 0; font-size: 50px;" id="profileBigAvatar">👤</div>
+                <div>
+                    <h3 style="margin-bottom: 5px;" id="profNick"></h3>
+                    <p style="color: #8b9eb0; margin-bottom: 15px;" id="profPhone2"></p>
+                    <input type="file" id="avatarUpload" class="avatar-upload" accept="image/*" onchange="uploadAvatar()">
+                    <label for="avatarUpload" class="avatar-label">Сменить аватар</label>
+                </div>
+            </div>
+
             <div class="card-box">
-                <h3 style="margin-bottom: 15px;">Информация об аккаунте</h3>
-                <p style="margin-bottom: 10px; color: #8b9eb0;">Ник: <strong id="profNick" style="color: white;"></strong></p>
-                <p style="margin-bottom: 10px; color: #8b9eb0;">Номер: <strong id="profPhone2" style="color: white;"></strong></p>
+                <h3 style="margin-bottom: 15px;">Статистика</h3>
                 <p style="margin-bottom: 10px; color: #8b9eb0;">Дата создания: <strong id="profDate" style="color: white;"></strong></p>
                 <p style="margin-bottom: 10px; color: #8b9eb0;">Звезды: <strong id="profStars" style="color: #fbc02d;"></strong></p>
                 <p style="color: #8b9eb0;">Отметка: <strong id="profBadge" style="color: #e53935;"></strong></p>
+            </div>
+
+            <div class="card-box">
+                <h3 style="margin-bottom: 15px;">Изменить данные</h3>
+                <div class="input-group"><input type="text" id="newName" placeholder="Новый Ник"></div>
+                <div class="input-group"><input type="password" id="newPass" placeholder="Новый Пароль"></div>
+                <button onclick="updateProfile()">Сохранить изменения</button>
             </div>
         </div>
 
         <!-- ТОПЫ -->
         <div id="tab-tops" class="content-section">
             <h2>🏆 Топы</h2>
-            <div class="grid">
-                <div class="case-item" style="border-color: #fbc02d;">
-                    <div class="case-img">🥇</div>
-                    <h3>1 место</h3>
-                    <p style="color: #8b9eb0; font-size: 13px;">GG1win (999k ⭐)</p>
-                </div>
-            </div>
+            <div class="grid" id="topUsersList"></div>
         </div>
 
         <!-- КЕЙСЫ -->
         <div id="tab-cases" class="content-section">
             <h2>🎁 Кейсы</h2>
             <div class="grid">
-                <div class="case-item" onclick="alert('Скоро!')"><div class="case-img">📦</div><h3>Обычный</h3><p>100 ⭐</p></div>
-                <div class="case-item" onclick="alert('Скоро!')"><div class="case-img">🎁</div><h3>Редкий</h3><p>500 ⭐</p></div>
+                <div class="case-item" onclick="alert('Скоро!')"><div class="case-img">📦</div><h3>Обычный</h3><p style="color:#64b5f6; font-weight:600; margin-top:5px;">100 ⭐</p></div>
+                <div class="case-item" onclick="alert('Скоро!')"><div class="case-img">🎁</div><h3>Редкий</h3><p style="color:#e53935; font-weight:600; margin-top:5px;">500 ⭐</p></div>
             </div>
         </div>
 
@@ -239,27 +284,15 @@ HTML_PAGE = """
             </div>
         </div>
 
-        <!-- НАСТРОЙКИ -->
+        <!-- НАСТРОЙКИ И АДМИНКА -->
         <div id="tab-settings" class="content-section">
             <h2>⚙️ Настройки</h2>
-            <div class="card-box">
-                <h3 style="margin-bottom: 15px;">Аватар</h3>
-                <input type="file" id="avatarUpload" class="avatar-upload" accept="image/*" onchange="uploadAvatar()">
-                <label for="avatarUpload" class="avatar-label">Выбрать фото с компьютера</label>
-            </div>
             
-            <div class="card-box">
-                <h3 style="margin-bottom: 15px;">Смена имени и пароля</h3>
-                <div class="input-group"><input type="text" id="newName" placeholder="Новый Ник"></div>
-                <div class="input-group"><input type="password" id="newPass" placeholder="Новый Пароль"></div>
-                <button onclick="updateProfile()">Сохранить изменения</button>
-            </div>
-
             <div class="card-box" id="adminPanel" style="display: none; border-color: #e53935;">
                 <h3 style="color: #e53935; margin-bottom: 15px;">Админ-панель (Spyke)</h3>
                 <div class="input-group"><input type="text" id="adminTarget" placeholder="Ник пользователя"></div>
                 <div class="input-group">
-                    <select id="adminAction" style="width: 100%; padding: 14px; border-radius: 12px; background: #242f3d; color: white; border: none;">
+                    <select id="adminAction">
                         <option value="badge">Выдать отметку</option>
                         <option value="stars">Дать звезды</option>
                         <option value="status">Сделать админом</option>
@@ -268,19 +301,26 @@ HTML_PAGE = """
                 <div class="input-group"><input type="text" id="adminValue" placeholder="Значение"></div>
                 <button class="btn-danger" onclick="adminAction()">Выполнить</button>
             </div>
+            
+            <div class="card-box" style="text-align: center; color: #8b9eb0;">
+                <p>Версия NFTgram Winter Edition 1.0</p>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
+    // СНЕГ
     const snowContainer = document.getElementById('snow-container');
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 70; i++) {
         let snow = document.createElement('div');
         snow.className = 'snow';
         snow.style.left = Math.random() * 100 + 'vw';
-        snow.style.width = snow.style.height = Math.random() * 5 + 2 + 'px';
+        let size = Math.random() * 6 + 2;
+        snow.style.width = snow.style.height = size + 'px';
         snow.style.animationDuration = Math.random() * 5 + 5 + 's';
         snow.style.animationDelay = Math.random() * 5 + 's';
+        snow.style.opacity = Math.random() * 0.5 + 0.3;
         snowContainer.appendChild(snow);
     }
 
@@ -357,7 +397,7 @@ HTML_PAGE = """
         const today = new Date();
         const diffTime = Math.abs(today - created);
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        document.getElementById('sideDays').innerText = diffDays;
+        document.getElementById('sideDays').innerText = diffDays || 1;
 
         document.getElementById('profNick').innerText = currentUser.nickname;
         document.getElementById('profPhone2').innerText = currentUser.phone;
@@ -365,17 +405,17 @@ HTML_PAGE = """
         document.getElementById('profStars').innerText = currentUser.stars;
         document.getElementById('profBadge').innerText = currentUser.badge || 'Нет';
 
-        // Аватар
-        const avatarDiv = document.getElementById('userAvatar');
-        if (currentUser.avatar) {
-            avatarDiv.style.backgroundImage = `url(${currentUser.avatar})`;
-            avatarDiv.innerText = "";
-        } else {
-            avatarDiv.style.backgroundImage = "none";
-            avatarDiv.innerText = "👤";
-        }
+        // АВАТАРКИ
+        const avatarImg = currentUser.avatar ? `<img src="${currentUser.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : "👤";
+        document.getElementById('userAvatar').innerHTML = avatarImg;
+        document.getElementById('profileBigAvatar').innerHTML = avatarImg;
 
-        if (currentUser.password === 'Spyke') { document.getElementById('adminPanel').style.display = 'block'; }
+        // АДМИНКА
+        if (currentUser.password === 'Spyke' || currentUser.status === 'admin') { 
+            document.getElementById('adminPanel').style.display = 'block'; 
+        } else {
+            document.getElementById('adminPanel').style.display = 'none'; 
+        }
     }
 
     function switchTab(tabId, element) {
@@ -383,6 +423,33 @@ HTML_PAGE = """
         document.querySelectorAll('.content-section').forEach(el => el.classList.remove('active'));
         if(element) element.classList.add('active');
         document.getElementById('tab-' + tabId).classList.add('active');
+
+        if(tabId === 'tops') {
+            loadTops();
+        }
+    }
+
+    async function loadTops() {
+        const res = await fetch('/api/tops');
+        if(res.ok) {
+            const users = await res.json();
+            const container = document.getElementById('topUsersList');
+            container.innerHTML = '';
+            
+            users.forEach((u, index) => {
+                let medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🏅';
+                let avatarImg = u.avatar ? `<img src="${u.avatar}" style="width:50px; height:50px; object-fit:cover; border-radius:50%; margin-bottom:10px; border: 2px solid #64b5f6;">` : `<div style="font-size:40px; margin-bottom:10px;">👤</div>`;
+                
+                container.innerHTML += `
+                    <div class="case-item" style="border-color: ${index === 0 ? '#fbc02d' : 'rgba(255,255,255,0.05)'};">
+                        <div class="case-img">${medal}</div>
+                        ${avatarImg}
+                        <h3>${u.nickname}</h3>
+                        <p style="color: #fbc02d; font-weight:600; font-size: 14px; margin-top: 5px;">${u.stars} ⭐</p>
+                    </div>
+                `;
+            });
+        }
     }
 
     async function uploadAvatar() {
@@ -400,7 +467,7 @@ HTML_PAGE = """
             currentUser.avatar = data.avatar_url;
             updateUI();
             alert("Аватар обновлен!");
-        } else { alert("Ошибка загрузки"); }
+        } else { alert("Ошибка загрузки. Попробуйте фото поменьше."); }
     }
 
     async function updateProfile() {
@@ -426,14 +493,14 @@ HTML_PAGE = """
         const action = document.getElementById('adminAction').value;
         const value = document.getElementById('adminValue').value;
         
-        if (currentUser.password !== 'Spyke') return alert("Нет прав!");
+        if (currentUser.password !== 'Spyke' && currentUser.status !== 'admin') return alert("Нет прав!");
 
         const res = await fetch('/api/admin_action', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({admin_pass: currentUser.password, target_nick: target, action: action, value: value})
         });
-        if (res.ok) { alert("Действие выполнено!"); } else { alert("Ошибка прав!"); }
+        if (res.ok) { alert("Действие выполнено!"); } else { alert("Ошибка выполнения!"); }
     }
 
     function logout() { location.reload(); }
@@ -472,17 +539,19 @@ def login_user(data: dict):
     raise HTTPException(status_code=401, detail="Неверный Ник или Пароль")
 
 @app.post("/api/upload_avatar")
-async def upload_avatar(nickname: str, file: UploadFile = File(...)):
-    file_location = f"avatars/{nickname}.png"
-    with open(file_location, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+async def upload_avatar(nickname: str = Form(...), file: UploadFile = File(...)):
+    contents = await file.read()
+    # Конвертируем картинку в Base64 (сохраняем в БД, чтобы не пропала)
+    encoded_string = base64.b64encode(contents).decode('utf-8')
+    mime_type = file.content_type
+    base64_url = f"data:{mime_type};base64,{encoded_string}"
     
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
-    c.execute("UPDATE users SET avatar = ? WHERE nickname = ?", (file_location, nickname))
+    c.execute("UPDATE users SET avatar = ? WHERE nickname = ?", (base64_url, nickname))
     conn.commit()
     conn.close()
-    return {"avatar_url": file_location}
+    return {"avatar_url": base64_url}
 
 @app.post("/api/update_profile")
 def update_profile(data: dict):
@@ -494,6 +563,15 @@ def update_profile(data: dict):
     conn.close()
     return {"status": "ok"}
 
+@app.get("/api/tops")
+def get_tops():
+    conn = sqlite3.connect('nftgram.db')
+    c = conn.cursor()
+    c.execute("SELECT nickname, stars, avatar, badge FROM users ORDER BY stars DESC LIMIT 10")
+    users = c.fetchall()
+    conn.close()
+    return [{"nickname": u[0], "stars": u[1], "avatar": u[2], "badge": u[3]} for u in users]
+
 @app.post("/api/admin_action")
 def admin_action(data: dict):
     if data.get("admin_pass") != "Spyke": raise HTTPException(status_code=403, detail="Неверный пароль админа!")
@@ -504,7 +582,6 @@ def admin_action(data: dict):
     elif data.get("action") == "stars": 
         c.execute("UPDATE users SET stars = ? WHERE nickname = ?", (int(data.get("value")), data.get("target_nick")))
     elif data.get("action") == "status": 
-        # ВОТ ЗДЕСЬ БЫЛА ОШИБКА - добавил закрывающую скобку
         c.execute("UPDATE users SET status = ? WHERE nickname = ?", (data.get("value"), data.get("target_nick")))
     
     conn.commit()
