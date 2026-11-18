@@ -8,7 +8,6 @@ from datetime import datetime
 
 app = FastAPI()
 
-# --- БАЗА ДАННЫХ ---
 def init_db():
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
@@ -29,7 +28,6 @@ def init_db():
     except sqlite3.OperationalError:
         pass
     
-    # Добавляем системного бота, чтобы топы не были пустыми
     c.execute("SELECT * FROM users WHERE nickname = 'Admin'")
     if not c.fetchone():
         c.execute("INSERT INTO users (nickname, phone, password, username, custom_id, stars, role, created_at, bio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -58,17 +56,18 @@ HTML_PAGE = """
         .snow { position: absolute; top: -10px; background: white; border-radius: 50%; opacity: 0.8; animation: fall linear infinite; pointer-events: none; z-index: 1; box-shadow: 0 0 10px rgba(255,255,255,0.5);}
         @keyframes fall { to { transform: translateY(100vh); } }
 
-        #toast-container { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 9999; display: flex; flex-direction: column; gap: 15px; align-items: center; pointer-events: none; }
+        /* КРАСИВЫЕ УВЕДОМЛЕНИЯ */
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 15px; align-items: flex-end; pointer-events: none; }
         .toast { 
             background: rgba(23, 33, 43, 0.95); backdrop-filter: blur(15px); color: white; 
-            padding: 20px 40px; border-radius: 20px; font-weight: 600; font-size: 16px; 
-            box-shadow: 0 20px 50px rgba(0,0,0,0.8); border: 1px solid rgba(100,181,246,0.3);
-            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
-            display: flex; align-items: center; gap: 15px; pointer-events: auto;
+            padding: 15px 25px; border-radius: 15px; font-weight: 600; font-size: 14px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8); border: 1px solid rgba(100,181,246,0.3);
+            animation: slideIn 0.3s forwards;
+            display: flex; align-items: center; gap: 10px; pointer-events: auto;
         }
-        .toast.success { border-color: #43a047; box-shadow: 0 0 20px rgba(67,160,71,0.4); }
-        .toast.error { border-color: #e53935; box-shadow: 0 0 20px rgba(229,57,53,0.4); }
-        @keyframes popIn { from { opacity: 0; transform: scale(0.8) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        .toast.success { border-color: #43a047; box-shadow: 0 0 15px rgba(67,160,71,0.3); }
+        .toast.error { border-color: #e53935; box-shadow: 0 0 15px rgba(229,57,53,0.3); }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(50px); } to { opacity: 1; transform: translateX(0); } }
 
         .auth-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; display: flex; justify-content: center; align-items: center; width: 100%; }
         .card { 
@@ -165,7 +164,6 @@ HTML_PAGE = """
         .role-helper { color: #00bcd4; border: 1px solid #00bcd4; background: rgba(0,188,212,0.1); }
         .role-scam { color: #9e9e9e; border: 1px solid #9e9e9e; text-decoration: line-through; }
 
-        /* АДМИНКА СНЕЖНАЯ */
         .admin-section {
             background: rgba(255,255,255,0.03);
             border: 1px solid rgba(100,181,246,0.2);
@@ -184,11 +182,37 @@ HTML_PAGE = """
             font-size: 16px;
         }
         .admin-title { color: #90caf9; font-size: 16px; font-weight: 700; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;}
+
+        /* МОДАЛЬНОЕ ОКНО ПРОСМОТРА ПРОФИЛЯ */
+        #viewProfileModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
+            display: none; justify-content: center; align-items: center; z-index: 1000;
+        }
+        .view-profile-card {
+            background: rgba(23, 33, 43, 0.95); border: 1px solid rgba(100,181,246,0.3);
+            padding: 40px; border-radius: 20px; text-align: center; width: 350px;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8);
+        }
+        .view-profile-card .avatar { width: 120px; height: 120px; font-size: 50px; border-color: #90caf9; }
     </style>
 </head>
 <body>
 <div id="snow-container"></div>
 <div id="toast-container"></div>
+
+<!-- МОДАЛКА ПРОСМОТРА ПРОФИЛЯ -->
+<div id="viewProfileModal" onclick="closeViewProfile(event)">
+    <div class="view-profile-card" onclick="event.stopPropagation()">
+        <div class="avatar" id="viewAvatar">👤</div>
+        <h3 style="margin-bottom: 5px;" id="viewNick">Ник</h3>
+        <p style="color: #90caf9; font-weight: 600; margin-bottom: 5px;" id="viewUsername">@username</p>
+        <p style="color: #8b9eb0; font-size: 13px; margin-bottom: 10px;" id="viewId">ID: 0</p>
+        <p style="color: #b0bec5; font-size: 14px; font-style: italic; margin-bottom: 15px;" id="viewBio">Био</p>
+        <p style="color: #fbc02d; font-weight: 700;" id="viewStars">0 ⭐</p>
+        <button style="margin-top: 20px; background: #e53935; color: white;" onclick="closeViewProfile()">Закрыть</button>
+    </div>
+</div>
 
 <!-- ЭКРАН ВХОДА -->
 <div class="auth-container" id="authScreen">
@@ -374,7 +398,7 @@ HTML_PAGE = """
             </div>
             
             <div class="card-box" style="text-align: center; color: #8b9eb0; margin-top: 50px;">
-                <p>Версия NFTgram Winter Edition 1.6</p>
+                <p>Версия NFTgram Winter Edition 1.7</p>
             </div>
         </div>
     </div>
@@ -404,7 +428,7 @@ HTML_PAGE = """
         container.appendChild(toast);
         setTimeout(() => {
             toast.style.opacity = '0';
-            toast.style.transform = 'scale(0.8) translateY(20px)';
+            toast.style.transform = 'translateX(50px)';
             toast.style.transition = '0.3s';
             setTimeout(() => toast.remove(), 300);
         }, 3000);
@@ -535,8 +559,9 @@ HTML_PAGE = """
                 let medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🏅';
                 let avatarImg = u.avatar ? `<img src="${u.avatar}" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:10px; border: 2px solid #64b5f6;">` : `<div style="font-size:40px; margin-bottom:10px;">👤</div>`;
                 
+                // ДОБАВИЛ ONCLICK ДЛЯ ПРОСМОТРА ПРОФИЛЯ
                 container.innerHTML += `
-                    <div class="case-item" style="border-color: ${index === 0 ? '#fbc02d' : 'rgba(255,255,255,0.05)'};">
+                    <div class="case-item" style="border-color: ${index === 0 ? '#fbc02d' : 'rgba(255,255,255,0.05)'};" onclick='openViewProfile(${JSON.stringify(u)})'>
                         <div class="case-img">${medal}</div>
                         ${avatarImg}
                         <h3 style="display: flex; justify-content: center; align-items: center; gap: 5px;">${u.nickname}</h3>
@@ -545,6 +570,29 @@ HTML_PAGE = """
                 `;
             });
         }
+    }
+
+    // ПРОСМОТР ЧУЖОГО ПРОФИЛЯ
+    function openViewProfile(user) {
+        document.getElementById('viewNick').innerText = user.nickname;
+        document.getElementById('viewUsername').innerText = user.username || '@нет';
+        document.getElementById('viewId').innerText = `ID: ${user.custom_id || 'нет'}`;
+        document.getElementById('viewBio').innerText = user.bio || 'Био пока нет...';
+        document.getElementById('viewStars').innerText = `${user.stars} ⭐`;
+        
+        const avatarDiv = document.getElementById('viewAvatar');
+        if (user.avatar) {
+            avatarDiv.innerHTML = `<img src="${user.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+        } else {
+            avatarDiv.innerHTML = "👤";
+        }
+        
+        document.getElementById('viewProfileModal').style.display = 'flex';
+    }
+
+    function closeViewProfile(e) {
+        if (e && e.target.id !== 'viewProfileModal' && e.target.tagName !== 'BUTTON') return;
+        document.getElementById('viewProfileModal').style.display = 'none';
     }
 
     async function uploadAvatar() {
@@ -610,6 +658,7 @@ HTML_PAGE = """
         }
     }
 
+    // ОБНОВЛЕННАЯ АДМИНКА (МГНОВЕННО ОБНОВЛЯЕТ ДАННЫЕ)
     async function adminAction(action, forceValue = null) {
         let targetId = '';
         let value = forceValue;
@@ -633,7 +682,19 @@ HTML_PAGE = """
             body: JSON.stringify({admin_pass: "Spyke", target_id: targetId, action: action, value: value})
         });
         
-        if (res.ok) { showToast("Действие выполнено!", "success"); } 
+        if (res.ok) { 
+            showToast("Действие выполнено!", "success"); 
+            
+            // Если мы изменили СВОЙ профиль, обновляем локальные данные
+            if (targetId === currentUser.custom_id) {
+                if (action === 'stars') currentUser.stars = parseInt(value);
+                if (action === 'role') currentUser.role = value;
+                localStorage.setItem('nftgram_user', JSON.stringify(currentUser));
+                updateUI();
+            }
+            if (action === 'stars' || action === 'role') loadTops(); // Обновляем топы
+
+        } 
         else { showToast("Ошибка! Проверьте правильность ID.", "error"); }
     }
 
@@ -713,10 +774,11 @@ def update_profile(data: dict):
 def get_tops():
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
-    c.execute("SELECT nickname, stars, avatar FROM users ORDER BY stars DESC LIMIT 10")
+    # ТЕПЕРЬ ЗДЕСЬ ВСЕ ДАННЫЕ ДЛЯ ПРОСМОТРА ПРОФИЛЯ
+    c.execute("SELECT nickname, stars, avatar, username, custom_id, bio, role FROM users ORDER BY stars DESC LIMIT 10")
     users = c.fetchall()
     conn.close()
-    return [{"nickname": u[0], "stars": u[1], "avatar": u[2]} for u in users]
+    return [{"nickname": u[0], "stars": u[1], "avatar": u[2], "username": u[3], "custom_id": u[4], "bio": u[5], "role": u[6]} for u in users]
 
 @app.post("/api/admin_action")
 def admin_action(data: dict):
