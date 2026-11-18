@@ -1,8 +1,5 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
-import uvicorn
-import random
 import sqlite3
 import os
 import shutil
@@ -12,8 +9,7 @@ app = FastAPI()
 
 # --- БАЗА ДАННЫХ ---
 def init_db():
-    if os.path.exists('nftgram.db'):
-        os.remove('nftgram.db')
+    # ❗ Я убрал os.remove('nftgram.db'), чтобы твоя база не удалялась при каждом запуске!
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS users
@@ -21,8 +17,13 @@ def init_db():
                  nickname TEXT UNIQUE, phone TEXT, password TEXT,
                  stars INTEGER DEFAULT 1000, status TEXT DEFAULT 'user',
                  badge TEXT DEFAULT '', created_at TEXT, avatar TEXT DEFAULT '')''')
-    c.execute("INSERT INTO users (nickname, phone, password, status, created_at) VALUES (?, ?, ?, ?, ?)",
-              ("Admin", "+80000000000", "Spyke", "admin", datetime.now().strftime("%Y-%m-%d")))
+    
+    # Проверяем, есть ли уже админ, чтобы не создавать его дубликаты
+    c.execute("SELECT * FROM users WHERE nickname = 'Admin'")
+    if not c.fetchone():
+        c.execute("INSERT INTO users (nickname, phone, password, status, created_at) VALUES (?, ?, ?, ?, ?)",
+                  ("Admin", "+80000000000", "Spyke", "admin", datetime.now().strftime("%Y-%m-%d")))
+    
     conn.commit()
     conn.close()
 
@@ -498,6 +499,14 @@ def admin_action(data: dict):
     if data.get("admin_pass") != "Spyke": raise HTTPException(status_code=403, detail="Неверный пароль админа!")
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
-    if data.get("action") == "badge": c.execute("UPDATE users SET badge = ? WHERE nickname = ?", (data.get("value"), data.get("target_nick")))
-    elif data.get("action") == "stars": c.execute("UPDATE users SET stars = ? WHERE nickname = ?", (int(data.get("value")), data.get("target_nick")))
-    elif data.get("action") == "status": c.execute("UPDATE users SET status = ? WHERE nickname = ?", (
+    if data.get("action") == "badge": 
+        c.execute("UPDATE users SET badge = ? WHERE nickname = ?", (data.get("value"), data.get("target_nick")))
+    elif data.get("action") == "stars": 
+        c.execute("UPDATE users SET stars = ? WHERE nickname = ?", (int(data.get("value")), data.get("target_nick")))
+    elif data.get("action") == "status": 
+        # ВОТ ЗДЕСЬ БЫЛА ОШИБКА - добавил закрывающую скобку
+        c.execute("UPDATE users SET status = ? WHERE nickname = ?", (data.get("value"), data.get("target_nick")))
+    
+    conn.commit()
+    conn.close()
+    return {"status": "ok"}
