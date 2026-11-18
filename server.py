@@ -28,10 +28,8 @@ def init_db():
     except sqlite3.OperationalError:
         pass
     
-    c.execute("SELECT * FROM users WHERE nickname = 'Admin'")
-    if not c.fetchone():
-        c.execute("INSERT INTO users (nickname, phone, password, username, custom_id, stars, role, created_at, bio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                  ("Admin", "+79999999999", "spyke", "@admin_bot", "0000000000", 999999, "owner", datetime.now().strftime("%Y-%m-%d"), "Системный аккаунт"))
+    # УДАЛЯЕМ СТАРОГО БОТА ADMIN, ЧТОБЫ ОН НЕ МЕШАЛ В ТОПАХ
+    c.execute("DELETE FROM users WHERE nickname = 'Admin' AND custom_id = '0000000000'")
     
     conn.commit()
     conn.close()
@@ -56,7 +54,6 @@ HTML_PAGE = """
         .snow { position: absolute; top: -10px; background: white; border-radius: 50%; opacity: 0.8; animation: fall linear infinite; pointer-events: none; z-index: 1; box-shadow: 0 0 10px rgba(255,255,255,0.5);}
         @keyframes fall { to { transform: translateY(100vh); } }
 
-        /* КРАСИВЫЕ УВЕДОМЛЕНИЯ */
         #toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 15px; align-items: flex-end; pointer-events: none; }
         .toast { 
             background: rgba(23, 33, 43, 0.95); backdrop-filter: blur(15px); color: white; 
@@ -183,7 +180,6 @@ HTML_PAGE = """
         }
         .admin-title { color: #90caf9; font-size: 16px; font-weight: 700; margin-bottom: 15px; display: flex; align-items: center; gap: 8px;}
 
-        /* МОДАЛЬНОЕ ОКНО ПРОСМОТРА ПРОФИЛЯ */
         #viewProfileModal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
@@ -398,7 +394,7 @@ HTML_PAGE = """
             </div>
             
             <div class="card-box" style="text-align: center; color: #8b9eb0; margin-top: 50px;">
-                <p>Версия NFTgram Winter Edition 1.7</p>
+                <p>Версия NFTgram Winter Edition 1.8</p>
             </div>
         </div>
     </div>
@@ -559,7 +555,7 @@ HTML_PAGE = """
                 let medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🏅';
                 let avatarImg = u.avatar ? `<img src="${u.avatar}" style="width:60px; height:60px; object-fit:cover; border-radius:50%; margin-bottom:10px; border: 2px solid #64b5f6;">` : `<div style="font-size:40px; margin-bottom:10px;">👤</div>`;
                 
-                // ДОБАВИЛ ONCLICK ДЛЯ ПРОСМОТРА ПРОФИЛЯ
+                // БЕЗОПАСНЫЙ ONCLICK ДЛЯ ПРОСМОТРА ПРОФИЛЯ
                 container.innerHTML += `
                     <div class="case-item" style="border-color: ${index === 0 ? '#fbc02d' : 'rgba(255,255,255,0.05)'};" onclick='openViewProfile(${JSON.stringify(u)})'>
                         <div class="case-img">${medal}</div>
@@ -572,7 +568,6 @@ HTML_PAGE = """
         }
     }
 
-    // ПРОСМОТР ЧУЖОГО ПРОФИЛЯ
     function openViewProfile(user) {
         document.getElementById('viewNick').innerText = user.nickname;
         document.getElementById('viewUsername').innerText = user.username || '@нет';
@@ -658,7 +653,6 @@ HTML_PAGE = """
         }
     }
 
-    // ОБНОВЛЕННАЯ АДМИНКА (МГНОВЕННО ОБНОВЛЯЕТ ДАННЫЕ)
     async function adminAction(action, forceValue = null) {
         let targetId = '';
         let value = forceValue;
@@ -685,17 +679,19 @@ HTML_PAGE = """
         if (res.ok) { 
             showToast("Действие выполнено!", "success"); 
             
-            // Если мы изменили СВОЙ профиль, обновляем локальные данные
+            // Мгновенное обновление своего профиля
             if (targetId === currentUser.custom_id) {
                 if (action === 'stars') currentUser.stars = parseInt(value);
                 if (action === 'role') currentUser.role = value;
                 localStorage.setItem('nftgram_user', JSON.stringify(currentUser));
                 updateUI();
             }
-            if (action === 'stars' || action === 'role') loadTops(); // Обновляем топы
-
+            if (action === 'stars' || action === 'role') loadTops();
         } 
-        else { showToast("Ошибка! Проверьте правильность ID.", "error"); }
+        else { 
+            // Если сервер вернул ошибку (ID не найден)
+            showToast("Ошибка! Пользователь с таким ID не найден.", "error"); 
+        }
     }
 
     function logout() { 
@@ -774,7 +770,6 @@ def update_profile(data: dict):
 def get_tops():
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
-    # ТЕПЕРЬ ЗДЕСЬ ВСЕ ДАННЫЕ ДЛЯ ПРОСМОТРА ПРОФИЛЯ
     c.execute("SELECT nickname, stars, avatar, username, custom_id, bio, role FROM users ORDER BY stars DESC LIMIT 10")
     users = c.fetchall()
     conn.close()
@@ -789,6 +784,12 @@ def admin_action(data: dict):
     target_id = str(data.get("target_id"))
     value = data.get("value")
     
+    # Проверяем, существует ли пользователь с таким ID
+    c.execute("SELECT id FROM users WHERE custom_id = ?", (target_id,))
+    if not c.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+
     if data.get("action") == "stars": 
         c.execute("UPDATE users SET stars = ? WHERE custom_id = ?", (int(value), target_id))
     elif data.get("action") == "role": 
