@@ -15,17 +15,35 @@ def init_db():
                  (id INTEGER PRIMARY KEY AUTOINCREMENT,
                  nickname TEXT UNIQUE, phone TEXT, password TEXT,
                  stars INTEGER DEFAULT 1000, status TEXT DEFAULT 'user',
-                 badge TEXT DEFAULT '', created_at TEXT, avatar TEXT DEFAULT '')''')
+                 badge TEXT DEFAULT '', created_at TEXT, avatar TEXT DEFAULT '',
+                 role TEXT DEFAULT 'user', is_banned INTEGER DEFAULT 0)''')
+    
+    # Добавляем колонки, если база старая (чтобы не удалять данные)
+    try:
+        c.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'")
+        c.execute("ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass
     
     c.execute("SELECT * FROM users WHERE nickname = 'Admin'")
     if not c.fetchone():
-        c.execute("INSERT INTO users (nickname, phone, password, status, created_at) VALUES (?, ?, ?, ?, ?)",
-                  ("Admin", "+80000000000", "Spyke", "admin", datetime.now().strftime("%Y-%m-%d")))
+        c.execute("INSERT INTO users (nickname, phone, password, status, created_at, role) VALUES (?, ?, ?, ?, ?, ?)",
+                  ("Admin", "+80000000000", "Spyke", "admin", datetime.now().strftime("%Y-%m-%d"), "owner"))
     
     conn.commit()
     conn.close()
 
 init_db()
+
+# Словарь для красивых названий и цветов ролей
+ROLES = {
+    "owner": {"name": "Овнер 👑", "color": "#e53935"}, # Красный
+    "admin": {"name": "Админ 🛡️", "color": "#e53935"}, # Красный
+    "moder": {"name": "Модер ⚔️", "color": "#e53935"}, # Красный
+    "scam": {"name": "Скам 🚫", "color": "#e53935"},   # Красный
+    "fake": {"name": "Фейк ⚠️", "color": "#e53935"},   # Красный
+    "user": {"name": "Юзер 👤", "color": "#8b9eb0"}    # Обычный (серый)
+}
 
 HTML_PAGE = """
 <!DOCTYPE html>
@@ -42,11 +60,9 @@ HTML_PAGE = """
             color: white; font-family: 'Inter', sans-serif; height: 100vh; overflow: hidden; display: flex; 
         }
 
-        /* СНЕГ */
         .snow { position: absolute; top: -10px; background: white; border-radius: 50%; opacity: 0.8; animation: fall linear infinite; pointer-events: none; z-index: 1; box-shadow: 0 0 10px rgba(255,255,255,0.5);}
         @keyframes fall { to { transform: translateY(100vh); } }
 
-        /* АВТОРИЗАЦИЯ */
         .auth-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; display: flex; justify-content: center; align-items: center; width: 100%; }
         .card { 
             background: rgba(23, 33, 43, 0.8); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
@@ -71,7 +87,6 @@ HTML_PAGE = """
         .link:hover { text-decoration: underline; }
         .hidden { display: none !important; }
 
-        /* ГЛАВНОЕ ОКНО */
         #appScreen { display: none; width: 100%; height: 100%; z-index: 20; }
         
         .sidebar { 
@@ -90,7 +105,10 @@ HTML_PAGE = """
         
         .user-name { font-size: 20px; font-weight: 700; margin-bottom: 5px; }
         .user-phone { color: #90caf9; font-size: 14px; }
-        .badge { background: #e53935; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; margin-left: 5px; }
+        
+        /* КРАСИВЫЕ СТАТУСЫ */
+        .user-role { font-size: 13px; font-weight: 700; margin-top: 5px; display: inline-block; padding: 3px 10px; border-radius: 8px; background: rgba(0,0,0,0.3); }
+        
         .user-stats { display: flex; justify-content: center; gap: 15px; margin-top: 15px; font-size: 13px; color: #8b9eb0; }
         .user-stats span { display: flex; align-items: center; gap: 5px; }
 
@@ -114,8 +132,8 @@ HTML_PAGE = """
         
         .btn-danger { background: linear-gradient(135deg, #e53935, #c62828); color: white; box-shadow: 0 4px 15px rgba(229,57,53,0.4); }
         .btn-danger:hover { box-shadow: 0 6px 20px rgba(229,57,53,0.6); }
+        .btn-success { background: linear-gradient(135deg, #43a047, #2e7d32); color: white; box-shadow: 0 4px 15px rgba(67,160,71,0.4); }
 
-        /* СЕТКА ТОПОВ */
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; }
         .case-item { 
             background: rgba(23, 33, 43, 0.7); border-radius: 20px; padding: 25px; 
@@ -131,6 +149,10 @@ HTML_PAGE = """
             border-radius: 10px; font-size: 14px; font-weight: 600; display: inline-block; transition: 0.3s;
         }
         .avatar-label:hover { background: #64b5f6; box-shadow: 0 0 15px rgba(100,181,246,0.5); }
+
+        /* АДМИН ПАНЕЛЬ */
+        #adminPasswordForm { display: block; }
+        #adminPanel { display: none; }
     </style>
 </head>
 <body>
@@ -171,6 +193,17 @@ HTML_PAGE = """
                 </select>
                 <input type="text" id="regPhone" placeholder="Номер (нажмите)" readonly onclick="generatePhone()" style="cursor: pointer; color: #8b9eb0;">
             </div>
+
+            <div class="input-group" style="margin-top: 10px;">
+                <select id="regRole">
+                    <option value="user">Обычный Юзер</option>
+                    <option value="moder">Модер</option>
+                    <option value="admin">Админ</option>
+                    <option value="scam">Скам</option>
+                    <option value="fake">Фейк</option>
+                    <option value="owner">Овнер</option>
+                </select>
+            </div>
             
             <button onclick="register()">Зарегистрироваться</button>
             <span class="link" onclick="showForm('login')">Уже есть аккаунт? Войти</span>
@@ -185,10 +218,7 @@ HTML_PAGE = """
             <div class="avatar" id="userAvatar">👤</div>
             <div class="user-name" id="sideName">Ник</div>
             <div class="user-phone" id="sidePhone">+0000</div>
-            <div style="margin-top: 10px; font-size: 13px; color: #8b9eb0;">
-                Статус: <span id="sideStatus">user</span>
-                <span id="sideBadge"></span>
-            </div>
+            <div id="sideRole" class="user-role"></div>
             <div class="user-stats">
                 <span>⭐ <span id="sideStars">1000</span></span>
                 <span>❄️ <span id="sideDays">0</span> дн.</span>
@@ -234,7 +264,8 @@ HTML_PAGE = """
                 <div class="avatar" style="width: 120px; height: 120px; margin: 0; font-size: 50px;" id="profileBigAvatar">👤</div>
                 <div>
                     <h3 style="margin-bottom: 5px;" id="profNick"></h3>
-                    <p style="color: #8b9eb0; margin-bottom: 15px;" id="profPhone2"></p>
+                    <p style="color: #8b9eb0; margin-bottom: 10px;" id="profPhone2"></p>
+                    <div id="profRole" class="user-role" style="margin-bottom: 15px;"></div>
                     <input type="file" id="avatarUpload" class="avatar-upload" accept="image/*" onchange="uploadAvatar()">
                     <label for="avatarUpload" class="avatar-label">Сменить аватар</label>
                 </div>
@@ -244,7 +275,6 @@ HTML_PAGE = """
                 <h3 style="margin-bottom: 15px;">Статистика</h3>
                 <p style="margin-bottom: 10px; color: #8b9eb0;">Дата создания: <strong id="profDate" style="color: white;"></strong></p>
                 <p style="margin-bottom: 10px; color: #8b9eb0;">Звезды: <strong id="profStars" style="color: #fbc02d;"></strong></p>
-                <p style="color: #8b9eb0;">Отметка: <strong id="profBadge" style="color: #e53935;"></strong></p>
             </div>
 
             <div class="card-box">
@@ -284,26 +314,39 @@ HTML_PAGE = """
             </div>
         </div>
 
-        <!-- НАСТРОЙКИ И АДМИНКА -->
+        <!-- НАСТРОЙКИ (СЕКРЕТНАЯ АДМИНКА) -->
         <div id="tab-settings" class="content-section">
             <h2>⚙️ Настройки</h2>
             
-            <div class="card-box" id="adminPanel" style="display: none; border-color: #e53935;">
-                <h3 style="color: #e53935; margin-bottom: 15px;">Админ-панель (Spyke)</h3>
+            <!-- Форма ввода пароля админа -->
+            <div class="card-box" id="adminPasswordForm">
+                <h3 style="margin-bottom: 15px;">Панель управления</h3>
+                <p style="color: #8b9eb0; margin-bottom: 10px; font-size: 14px;">Введите пароль администратора для доступа.</p>
+                <div class="input-group"><input type="password" id="adminPassInput" placeholder="Пароль"></div>
+                <button onclick="checkAdminPass()">Войти</button>
+            </div>
+
+            <!-- Сама панель (скрыта) -->
+            <div class="card-box" id="adminPanel" style="border-color: #e53935; background: rgba(50, 20, 20, 0.5);">
+                <h3 style="color: #e53935; margin-bottom: 15px;">Админ-панель</h3>
+                
                 <div class="input-group"><input type="text" id="adminTarget" placeholder="Ник пользователя"></div>
+                
                 <div class="input-group">
                     <select id="adminAction">
-                        <option value="badge">Выдать отметку</option>
-                        <option value="stars">Дать звезды</option>
-                        <option value="status">Сделать админом</option>
+                        <option value="stars">Дать звезды (введите число)</option>
+                        <option value="role">Сменить роль (модер, админ, скам и тд)</option>
+                        <option value="ban">Забанить пользователя (1 или 0)</option>
                     </select>
                 </div>
-                <div class="input-group"><input type="text" id="adminValue" placeholder="Значение"></div>
-                <button class="btn-danger" onclick="adminAction()">Выполнить</button>
+                
+                <div class="input-group"><input type="text" id="adminValue" placeholder="Значение (напр. 5000 или admin или 1)"></div>
+                
+                <button class="btn-danger" onclick="adminAction()">Выполнить действие</button>
             </div>
             
-            <div class="card-box" style="text-align: center; color: #8b9eb0;">
-                <p>Версия NFTgram Winter Edition 1.0</p>
+            <div class="card-box" style="text-align: center; color: #8b9eb0; margin-top: 50px;">
+                <p>Версия NFTgram Winter Edition 1.1</p>
             </div>
         </div>
     </div>
@@ -325,6 +368,14 @@ HTML_PAGE = """
     }
 
     let currentUser = null;
+    const ROLES = {
+        "owner": {"name": "Овнер 👑", "color": "#e53935"},
+        "admin": {"name": "Админ 🛡️", "color": "#e53935"},
+        "moder": {"name": "Модер ⚔️", "color": "#e53935"},
+        "scam": {"name": "Скам 🚫", "color": "#e53935"},
+        "fake": {"name": "Фейк ⚠️", "color": "#e53935"},
+        "user": {"name": "Юзер 👤", "color": "#8b9eb0"}
+    };
 
     function togglePass(id, btn) {
         let input = document.getElementById(id);
@@ -355,6 +406,7 @@ HTML_PAGE = """
         const pass = document.getElementById('regPass').value;
         const pass2 = document.getElementById('regPass2').value;
         const phone = document.getElementById('regPhone').value;
+        const role = document.getElementById('regRole').value; // Выбор роли
         
         if (!nick || !pass || !pass2) return alert("Заполните все поля!");
         if (pass !== pass2) return alert("Пароли не совпадают!");
@@ -363,7 +415,7 @@ HTML_PAGE = """
         const res = await fetch('/api/register', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({nickname: nick, password: pass, phone: phone})
+            body: JSON.stringify({nickname: nick, password: pass, phone: phone, role: role})
         });
         
         if (res.ok) { alert("Аккаунт создан!"); showForm('login'); } 
@@ -379,7 +431,10 @@ HTML_PAGE = """
             body: JSON.stringify({nickname: nick, password: pass})
         });
         if (res.ok) {
-            currentUser = await res.json();
+            const data = await res.json();
+            if(data.error) return alert(data.error); // Обработка бана
+            
+            currentUser = data;
             document.getElementById('authScreen').style.display = 'none';
             document.getElementById('appScreen').style.display = 'flex';
             updateUI();
@@ -389,8 +444,13 @@ HTML_PAGE = """
     function updateUI() {
         document.getElementById('sideName').innerText = currentUser.nickname;
         document.getElementById('sidePhone').innerText = currentUser.phone;
-        document.getElementById('sideStatus').innerText = currentUser.status;
-        document.getElementById('sideBadge').innerHTML = currentUser.badge ? `<span class="badge">${currentUser.badge}</span>` : '';
+        
+        // Отрисовка роли
+        const roleData = ROLES[currentUser.role] || ROLES['user'];
+        const roleHtml = `<span style="color: ${roleData.color}">${roleData.name}</span>`;
+        document.getElementById('sideRole').innerHTML = roleHtml;
+        document.getElementById('profRole').innerHTML = roleHtml;
+
         document.getElementById('sideStars').innerText = currentUser.stars;
         
         const created = new Date(currentUser.created_at);
@@ -403,19 +463,10 @@ HTML_PAGE = """
         document.getElementById('profPhone2').innerText = currentUser.phone;
         document.getElementById('profDate').innerText = currentUser.created_at;
         document.getElementById('profStars').innerText = currentUser.stars;
-        document.getElementById('profBadge').innerText = currentUser.badge || 'Нет';
 
-        // АВАТАРКИ
         const avatarImg = currentUser.avatar ? `<img src="${currentUser.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">` : "👤";
         document.getElementById('userAvatar').innerHTML = avatarImg;
         document.getElementById('profileBigAvatar').innerHTML = avatarImg;
-
-        // АДМИНКА
-        if (currentUser.password === 'Spyke' || currentUser.status === 'admin') { 
-            document.getElementById('adminPanel').style.display = 'block'; 
-        } else {
-            document.getElementById('adminPanel').style.display = 'none'; 
-        }
     }
 
     function switchTab(tabId, element) {
@@ -424,9 +475,7 @@ HTML_PAGE = """
         if(element) element.classList.add('active');
         document.getElementById('tab-' + tabId).classList.add('active');
 
-        if(tabId === 'tops') {
-            loadTops();
-        }
+        if(tabId === 'tops') loadTops();
     }
 
     async function loadTops() {
@@ -439,13 +488,15 @@ HTML_PAGE = """
             users.forEach((u, index) => {
                 let medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🏅';
                 let avatarImg = u.avatar ? `<img src="${u.avatar}" style="width:50px; height:50px; object-fit:cover; border-radius:50%; margin-bottom:10px; border: 2px solid #64b5f6;">` : `<div style="font-size:40px; margin-bottom:10px;">👤</div>`;
+                let rData = ROLES[u.role] || ROLES['user'];
                 
                 container.innerHTML += `
                     <div class="case-item" style="border-color: ${index === 0 ? '#fbc02d' : 'rgba(255,255,255,0.05)'};">
                         <div class="case-img">${medal}</div>
                         ${avatarImg}
                         <h3>${u.nickname}</h3>
-                        <p style="color: #fbc02d; font-weight:600; font-size: 14px; margin-top: 5px;">${u.stars} ⭐</p>
+                        <p style="color: ${rData.color}; font-size: 12px; font-weight: 700; margin-bottom: 5px;">${rData.name}</p>
+                        <p style="color: #fbc02d; font-weight:600; font-size: 14px;">${u.stars} ⭐</p>
                     </div>
                 `;
             });
@@ -488,19 +539,28 @@ HTML_PAGE = """
         } else { alert("Ошибка изменения"); }
     }
 
+    // СЕКРЕТНАЯ АДМИНКА
+    function checkAdminPass() {
+        const pass = document.getElementById('adminPassInput').value;
+        if (pass === 'Spyke' || currentUser.role === 'owner' || currentUser.role === 'admin') {
+            document.getElementById('adminPasswordForm').style.display = 'none';
+            document.getElementById('adminPanel').style.display = 'block';
+        } else {
+            alert("Неверный пароль администратора!");
+        }
+    }
+
     async function adminAction() {
         const target = document.getElementById('adminTarget').value;
         const action = document.getElementById('adminAction').value;
         const value = document.getElementById('adminValue').value;
-        
-        if (currentUser.password !== 'Spyke' && currentUser.status !== 'admin') return alert("Нет прав!");
 
         const res = await fetch('/api/admin_action', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({admin_pass: currentUser.password, target_nick: target, action: action, value: value})
+            body: JSON.stringify({admin_pass: "Spyke", target_nick: target, action: action, value: value})
         });
-        if (res.ok) { alert("Действие выполнено!"); } else { alert("Ошибка выполнения!"); }
+        if (res.ok) { alert("Действие выполнено!"); } else { alert("Ошибка! Проверьте ник."); }
     }
 
     function logout() { location.reload(); }
@@ -518,8 +578,8 @@ def register_user(data: dict):
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO users (nickname, phone, password, created_at) VALUES (?, ?, ?, ?)",
-                  (data.get("nickname"), data.get("phone"), data.get("password"), datetime.now().strftime("%Y-%m-%d")))
+        c.execute("INSERT INTO users (nickname, phone, password, role, created_at) VALUES (?, ?, ?, ?, ?)",
+                  (data.get("nickname"), data.get("phone"), data.get("password"), data.get("role", "user"), datetime.now().strftime("%Y-%m-%d")))
         conn.commit()
         return {"status": "ok"}
     except sqlite3.IntegrityError:
@@ -535,16 +595,18 @@ def login_user(data: dict):
     user = c.fetchone()
     conn.close()
     if user:
-        return {"nickname": user[1], "phone": user[2], "password": user[3], "stars": user[4], "status": user[5], "badge": user[6], "created_at": user[7], "avatar": user[8]}
+        if user[10] == 1: # Проверка на бан (индекс 10 - это is_banned)
+            return {"error": "Вы забанены в NFTgram!"}
+        
+        return {"nickname": user[1], "phone": user[2], "password": user[3], "stars": user[4], 
+                "status": user[5], "badge": user[6], "created_at": user[7], "avatar": user[8], "role": user[9]}
     raise HTTPException(status_code=401, detail="Неверный Ник или Пароль")
 
 @app.post("/api/upload_avatar")
 async def upload_avatar(nickname: str = Form(...), file: UploadFile = File(...)):
     contents = await file.read()
-    # Конвертируем картинку в Base64 (сохраняем в БД, чтобы не пропала)
     encoded_string = base64.b64encode(contents).decode('utf-8')
-    mime_type = file.content_type
-    base64_url = f"data:{mime_type};base64,{encoded_string}"
+    base64_url = f"data:{file.content_type};base64,{encoded_string}"
     
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
@@ -567,22 +629,23 @@ def update_profile(data: dict):
 def get_tops():
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
-    c.execute("SELECT nickname, stars, avatar, badge FROM users ORDER BY stars DESC LIMIT 10")
+    c.execute("SELECT nickname, stars, avatar, role FROM users ORDER BY stars DESC LIMIT 10")
     users = c.fetchall()
     conn.close()
-    return [{"nickname": u[0], "stars": u[1], "avatar": u[2], "badge": u[3]} for u in users]
+    return [{"nickname": u[0], "stars": u[1], "avatar": u[2], "role": u[3]} for u in users]
 
 @app.post("/api/admin_action")
 def admin_action(data: dict):
     if data.get("admin_pass") != "Spyke": raise HTTPException(status_code=403, detail="Неверный пароль админа!")
     conn = sqlite3.connect('nftgram.db')
     c = conn.cursor()
-    if data.get("action") == "badge": 
-        c.execute("UPDATE users SET badge = ? WHERE nickname = ?", (data.get("value"), data.get("target_nick")))
-    elif data.get("action") == "stars": 
+    
+    if data.get("action") == "stars": 
         c.execute("UPDATE users SET stars = ? WHERE nickname = ?", (int(data.get("value")), data.get("target_nick")))
-    elif data.get("action") == "status": 
-        c.execute("UPDATE users SET status = ? WHERE nickname = ?", (data.get("value"), data.get("target_nick")))
+    elif data.get("action") == "role": 
+        c.execute("UPDATE users SET role = ? WHERE nickname = ?", (data.get("value"), data.get("target_nick")))
+    elif data.get("action") == "ban": 
+        c.execute("UPDATE users SET is_banned = ? WHERE nickname = ?", (int(data.get("value")), data.get("target_nick")))
     
     conn.commit()
     conn.close()
